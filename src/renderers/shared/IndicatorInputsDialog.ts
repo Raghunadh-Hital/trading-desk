@@ -76,6 +76,7 @@ const TEXT = {
     close: msg('chart.indicatorSettings.close', 'Close'),
     inputsTab: msg('chart.indicatorSettings.inputsTab', 'Inputs'),
     propertiesTab: msg('chart.indicatorSettings.propertiesTab', 'Properties'),
+    styleTab: msg('chart.indicatorSettings.styleTab', 'Style'),
     openTimeList: msg('chart.indicatorSettings.openTimeList', 'Open time list'),
     openCalendar: msg('chart.indicatorSettings.openCalendar', 'Open calendar'),
     selectSymbol: msg('chart.indicatorSettings.selectSymbol', 'Select symbol…'),
@@ -217,7 +218,7 @@ export class IndicatorInputsDialog {
             onValueChange: showBody,
         });
         for (const [idx, def] of tabDefs.entries()) {
-            bodies.push(this.buildTabBody(def.inputs, row, gates));
+            bodies.push(this.buildTabBody(def.inputs, row, gates, def.name));
             // The strip label leaves only when every input on the tab is gated out —
             // possible only when all of them carry a `when`.
             if (def.inputs.every((d) => d.when)) {
@@ -261,7 +262,7 @@ export class IndicatorInputsDialog {
 
     /** One tab's scrollable body — one shared grid so every group's controls share a
      *  left edge (a 100px number field lines up with a wider session/time pair). */
-    private buildTabBody(inputs: InputSchema[], row: IndicatorDialogRow, gates: VisibilityGate[]): HTMLElement {
+    private buildTabBody(inputs: InputSchema[], row: IndicatorDialogRow, gates: VisibilityGate[], tabName?: string): HTMLElement {
         const body = document.createElement('div');
         // `display:contents` on each group lets headers + rows participate in this
         // one grid; per-section grids would each pick their own control-column width.
@@ -277,7 +278,7 @@ export class IndicatorInputsDialog {
             const section = document.createElement('div');
             section.style.cssText = 'display:contents;';
             let header: HTMLElement | null = null;
-            if (group.name) {
+            if (group.name && (!tabName || group.name.toLowerCase() !== tabName.toLowerCase())) {
                 header = fieldSection(group.label ? this.t(group.label) : group.name, {
                     variant: 'inputs',
                     first: body.childElementCount === 0,
@@ -530,6 +531,7 @@ export class IndicatorInputsDialog {
     private tabLabel(name: string): string {
         if (name === DEFAULT_INPUT_TAB) return this.t(TEXT.inputsTab);
         if (name === PROPS_TAB) return this.t(TEXT.propertiesTab);
+        if (name === 'Style') return this.t(TEXT.styleTab);
         return name;
     }
 
@@ -1036,7 +1038,10 @@ export interface InputTab {
 export function tabInputs(inputs: InputSchema[]): InputTab[] {
     const byTab = new Map<string, InputSchema[]>();
     for (const inp of inputs) {
-        const name = inp.tab && inp.tab.length > 0 ? inp.tab : DEFAULT_INPUT_TAB;
+        let name = inp.tab && inp.tab.length > 0 ? inp.tab : DEFAULT_INPUT_TAB;
+        if (name === DEFAULT_INPUT_TAB && inp.group && inp.group.toLowerCase().startsWith('style')) {
+            name = 'Style';
+        }
         if (!byTab.has(name)) byTab.set(name, []);
         byTab.get(name)!.push(inp);
     }
@@ -1044,6 +1049,11 @@ export function tabInputs(inputs: InputSchema[]): InputTab[] {
     if (names.includes(DEFAULT_INPUT_TAB)) {
         names.splice(names.indexOf(DEFAULT_INPUT_TAB), 1);
         names.unshift(DEFAULT_INPUT_TAB);
+    }
+    if (names.includes('Style')) {
+        names.splice(names.indexOf('Style'), 1);
+        const insIdx = names.indexOf(DEFAULT_INPUT_TAB) !== -1 ? names.indexOf(DEFAULT_INPUT_TAB) + 1 : 0;
+        names.splice(insIdx, 0, 'Style');
     }
     return names.map((name) => ({ name, inputs: byTab.get(name)! }));
 }

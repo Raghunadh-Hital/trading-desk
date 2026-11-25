@@ -42,6 +42,16 @@ describe('tabInputs — settings-dialog tab partition', () => {
         const tabs = tabInputs([input('s1', 'Style'), input('s2', 'Style')]);
         expect(tabs.map((t) => t.name)).toEqual(['Style']);
     });
+
+    it('routes inputs with group starting with Style to the Style tab right after Inputs', () => {
+        const tabs = tabInputs([
+            input('len'),
+            { key: 'col', title: 'Color', type: 'color', defval: '#ff0000', group: 'Style' },
+            input('v1', 'Visibility'),
+        ]);
+        expect(tabs.map((t) => t.name)).toEqual([DEFAULT_INPUT_TAB, 'Style', 'Visibility']);
+        expect(tabs[1]!.inputs.map((i) => i.key)).toEqual(['col']);
+    });
 });
 
 describe('inputDialogBodyStyle — settings-dialog row rhythm', () => {

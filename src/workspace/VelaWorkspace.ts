@@ -174,7 +174,7 @@ export interface WorkspaceEventMap extends Record<string, unknown> {
     'locale:changed': LocaleChangedEvent;
 }
 
-const DEFAULT_TIMEFRAMES = ['1', '5', '15', '30', '60', '240', 'D', 'W', 'M'];
+const DEFAULT_TIMEFRAMES = ['1', '5', '15', '30', '60', '120', '240', 'D', 'W', 'M'];
 const GAP_PX = 2; // grid gap — the visible seam between cells (splitter strips center on it)
 const POOL_CAP = 16; // dormant slot states kept across layout shrinks
 const TIME_AXIS_H = 22; // px the renderer reserves for a time axis (mirrors NativeRenderer's)

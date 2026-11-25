@@ -2031,6 +2031,8 @@ export class EngineOrchestrator implements IndicatorController, PaneController, 
         }
     }
 
+    private readonly inputDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
     /** IndicatorController: re-run an indicator with merged input overrides (Pine session OR native instance). */
     applyInputs(id: string, values: Record<string, InputValue>): void {
         const record = this.registry.get(id);
@@ -2043,8 +2045,22 @@ export class EngineOrchestrator implements IndicatorController, PaneController, 
         // Spinner during the re-compute (Pine only — native indicators drive their own status).
         if (!record.hidden && !record.native) this.setLoading(record, true);
         record.pendingCause = 'inputs';
-        if (record.session) record.session.update(record.inputValues);
-        else if (record.native && !record.hidden) record.native.instance.setInputs(record.inputValues);
+
+        if (record.session) {
+            // Debounce rapid input updates (e.g. typing, dragging steppers) so complex Pine scripts
+            // do not re-run repeatedly in a tight loop.
+            const existing = this.inputDebounceTimers.get(id);
+            if (existing) clearTimeout(existing);
+            this.inputDebounceTimers.set(
+                id,
+                setTimeout(() => {
+                    this.inputDebounceTimers.delete(id);
+                    record.session?.update(record.inputValues);
+                }, 120),
+            );
+        } else if (record.native && !record.hidden) {
+            record.native.instance.setInputs(record.inputValues);
+        }
         this.events.emit('indicator:inputs', { id });
     }
 
@@ -2220,6 +2236,11 @@ export class EngineOrchestrator implements IndicatorController, PaneController, 
     }
 
     removeIndicator(id: string): void {
+        const debounceTimer = this.inputDebounceTimers.get(id);
+        if (debounceTimer) {
+            clearTimeout(debounceTimer);
+            this.inputDebounceTimers.delete(id);
+        }
         const record = this.registry.remove(id);
         // Removing the auto-added volume is a USER decision — make it stick: the
         // auto-add fires on every load (first paint of every market), so without the
@@ -2384,6 +2405,8 @@ export class EngineOrchestrator implements IndicatorController, PaneController, 
         this.priceStyleWillChangeUnsub?.();
         this.priceStyleWillChangeUnsub = null;
         // native instances free their own caches/timers in stop()
+        for (const timer of this.inputDebounceTimers.values()) clearTimeout(timer);
+        this.inputDebounceTimers.clear();
         for (const record of this.registry.all()) {
             this.settleCode(record, { ok: false, error: new Error('[vela] updateCode — the chart was destroyed.') });
             record.session?.stop();

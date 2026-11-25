@@ -24,6 +24,7 @@ export default defineConfig([
             'providers/binance': 'src/data/providers/binance/index.ts',
             'providers/hyperliquid': 'src/data/providers/hyperliquid/index.ts',
             'providers/coinbase': 'src/data/providers/coinbase/index.ts',
+            'providers/fyers': 'src/data/providers/fyers/index.ts',
             ...localeEntries,
         },
         format: ['esm', 'cjs'],

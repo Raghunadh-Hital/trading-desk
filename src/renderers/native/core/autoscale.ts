@@ -33,10 +33,14 @@ export function computePaneScale(
         }
     };
 
+    let candleMin = Infinity;
+    let candleMax = -Infinity;
     if (includeCandles) {
         for (let i = i0; i <= i1; i += 1) {
             const b = bars[i];
             if (b) {
+                if (b.low < candleMin) candleMin = b.low;
+                if (b.high > candleMax) candleMax = b.high;
                 consider(b.high);
                 consider(b.low);
             }
@@ -55,9 +59,20 @@ export function computePaneScale(
     }
 
     // Visible Pine drawings (boxes/lines/labels/…) also expand the scale.
+    // When candles are present on the pane, drawings with outlier coordinates far beyond
+    // the asset's trading range (e.g. negative prices, or runaway indicator values) are
+    // excluded so they cannot collapse the candlestick view into a flat line.
     if (drawings) {
-        consider(drawings.min);
-        consider(drawings.max);
+        if (candleMin < Infinity && candleMax > -Infinity) {
+            const candleSpan = Math.max(candleMax - candleMin, candleMax * 0.05);
+            const saneMin = Math.max(candleMin > 0 ? candleMin * 0.1 : -Infinity, candleMin - candleSpan * 5);
+            const saneMax = Math.min(candleMax > 0 ? candleMax * 5 : Infinity, candleMax + candleSpan * 5);
+            if (drawings.min >= saneMin && drawings.min <= saneMax) consider(drawings.min);
+            if (drawings.max >= saneMin && drawings.max <= saneMax) consider(drawings.max);
+        } else {
+            consider(drawings.min);
+            consider(drawings.max);
+        }
     }
 
     if (min === Infinity || max === -Infinity) return { min: 0, max: 1 };

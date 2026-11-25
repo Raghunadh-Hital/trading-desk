@@ -1,0 +1,65 @@
+//@version=5
+// Mansfield Relative Strength (MRS) indicator
+// Use this indicator to compare how security is performing in compare with preferred index (NSE:NIFTY50-INDEX by default). 
+// > 0 outperforming 
+// < 0 underperforming
+// Works best for weekly, but can be applied to monthly and daily charts.
+
+indicator("Mansfield Relative Strength indicator", overlay=false)
+
+index = input.symbol("NSE:NIFTY50-INDEX", "Index")
+sector = input.symbol("NSE:NIFTY50-INDEX", "Sector (optional)")
+industry = input.symbol("NSE:NIFTY50-INDEX", "Industry (optional)")
+
+ma_type = input.string("SMA", "Which moving average to use?", options=["SMA", "WMA", "EMA"])
+len_daily = input.int(200, "MA length for Daily")
+len_weekly = input.int(52, "MA length for Weekly")
+len_monthly = input.int(10, "MA length for Monthly")
+len_other = input.int(52, "MA length for all other periods")
+
+// Style Settings
+show_bg = input.bool(true, "Background Color", group="Style", inline="bg")
+col_bull = input.color(#26a69a, "Bullish", group="Style", inline="bg")
+col_bear = input.color(#ef5350, "Bearish", group="Style", inline="bg")
+
+show_mrs = input.bool(true, "MRS index", group="Style", inline="mrs")
+col_mrs = input.color(#00897b, "", group="Style", inline="mrs")
+width_mrs = input.int(3, "Width", minval=1, maxval=5, group="Style", inline="mrs")
+
+show_sector = input.bool(false, "MRS sector", group="Style", inline="sector")
+col_sector = input.color(#2962ff, "", group="Style", inline="sector")
+width_sector = input.int(2, "Width", minval=1, maxval=5, group="Style", inline="sector")
+
+show_industry = input.bool(false, "MRS industry", group="Style", inline="ind")
+col_industry = input.color(#ff9800, "", group="Style", inline="ind")
+width_industry = input.int(1, "Width", minval=1, maxval=5, group="Style", inline="ind")
+
+show_zero = input.bool(true, "Zero baseline", group="Style", inline="zero")
+col_zero = input.color(#7e57c2, "", group="Style", inline="zero")
+width_zero = input.int(1, "Width", minval=1, maxval=5, group="Style", inline="zero")
+
+val = close
+
+len = timeframe.isweekly ? len_weekly : (timeframe.isdaily ? len_daily : (timeframe.ismonthly ? len_monthly : len_other))
+
+ma_func(source, length) =>
+    ma_type == "WMA" ? ta.wma(source, length) : (ma_type == "SMA" ? ta.sma(source, length) : ta.ema(source, length))
+
+calc_mrs(src, benchmark, length) =>
+    sec = request.security(benchmark, timeframe.period, src)
+    ratio = src / sec
+    ((ratio / ma_func(ratio, length)) - 1) * 10
+
+mrs_index = calc_mrs(val, index, len)
+mrs_sector = calc_mrs(val, sector, len)
+mrs_industry = calc_mrs(val, industry, len)
+c = math.sign(mrs_index) + math.sign(mrs_sector) + math.sign(mrs_industry)
+
+bg_col = show_bg ? (c == 3 ? color.new(col_bull, 80) : c == 2 ? color.new(col_bull, 75) : c == 1 ? color.new(col_bull, 70) : c == -1 ? color.new(col_bear, 70) : c == -2 ? color.new(col_bear, 75) : c == -3 ? color.new(col_bear, 80) : na) : na
+bgcolor(bg_col)
+
+plot(show_mrs ? mrs_index : na, "MRS index", color=col_mrs, linewidth=width_mrs)
+plot(show_sector and (mrs_sector != mrs_index) ? mrs_sector : na, "MRS sector", color=col_sector, linewidth=width_sector)
+plot(show_industry and (mrs_industry != mrs_index) ? mrs_industry : na, "MRS industry", color=col_industry, linewidth=width_industry)
+plot(show_zero ? 0.0 : na, "Zero baseline", color=col_zero, linewidth=width_zero)
+hline(0, "Zero baseline", color=#7e57c2, linestyle=hline.style_solid)

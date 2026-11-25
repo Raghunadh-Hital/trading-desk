@@ -1,0 +1,2665 @@
+//@version=6
+indicator('all in one', 'all in ones', overlay = true, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 1500,max_bars_back = 5000,precision = 2,format = format.price)
+// import TradingView/ta/10 (built-in in PineTS)
+// import jdehorty/KernelFunctions/2 as kernels
+
+
+//Height Control (applies to all 4 indicators below) - width/length is untouched
+HeightGroup = 'Height Control (All Indicators)'
+boxHeightScale = input.float(0.4, 'Box Height Scale', minval = 0.05, maxval = 1.0, step = 0.05, group = HeightGroup, tooltip = 'Shrinks the vertical height of every box toward its own midpoint. Lower = shorter boxes. Width/length is not affected.')
+
+
+// // new indicator: auto trendline doji emoji:
+
+// var int TYPE_UP = 1
+// var int TYPE_DOWN = -1
+// var string LINE_WIDTH1_STR = 'Width 1'
+// var string LINE_WIDTH2_STR = 'Width 2'
+// var string LINE_WIDTH6_STR = 'Width 6'
+// _get_width(string str_input) =>
+//     switch str_input // {string:int}
+//         LINE_WIDTH1_STR => 1
+//         LINE_WIDTH2_STR => 2
+//         LINE_WIDTH6_STR => 6
+
+// // ----------------------------------------------------------------------------
+// // Settings:
+// // {
+// var string GROUP_FRACT = 'Fractals'
+// var int n = input.int(10, title = 'Fractal Period', minval = 2, group = GROUP_FRACT)
+// var color col_hl = input.color(color.blue, title = 'Plot:', inline = 'plot_low', group = GROUP_FRACT)
+// var bool show_hl = input.bool(true, title = 'HL', inline = 'plot_low', group = GROUP_FRACT)
+// var color col_ll = input.color(color.gray, title = ', Plot:', inline = 'plot_low', group = GROUP_FRACT)
+// var bool show_ll = input.bool(false, title = 'LL', inline = 'plot_low', group = GROUP_FRACT)
+// var color col_lh = input.color(color.red, title = 'Plot:', inline = 'plot_high', group = GROUP_FRACT)
+// var bool show_lh = input.bool(true, title = 'LH', inline = 'plot_high', group = GROUP_FRACT)
+// var color col_hh = input.color(color.gray, title = ', Plot:', inline = 'plot_high', group = GROUP_FRACT)
+// var bool show_hh = input.bool(false, title = 'HH', inline = 'plot_high', group = GROUP_FRACT)
+
+// var string GROUP_ATL = 'Auto trendlines'
+// var string subgroup1 = 'recent line'
+// var color ln_col_recent = input.color(color.new(color.purple, 0), title = 'Recent Line', group = GROUP_ATL, inline = subgroup1)
+// var int lnwidth_recent = _get_width(input.string(LINE_WIDTH1_STR, options = [LINE_WIDTH1_STR, LINE_WIDTH2_STR, LINE_WIDTH6_STR], title = '', inline = subgroup1, group = GROUP_ATL))
+// var string subgroup2 = 'historical line'
+// var color ln_col_prev = input.color(color.new(color.gray, 50), title = 'Historical Line', group = GROUP_ATL, inline = subgroup2)
+// var int lnwidth_prev = _get_width(input.string(LINE_WIDTH1_STR, options = [LINE_WIDTH1_STR, LINE_WIDTH2_STR], title = '', inline = subgroup2, group = GROUP_ATL))
+
+// var int max_tl = input.int(1, title = 'Max pair of lines', maxval = 250, minval = 1, group = GROUP_ATL) * 2
+// var string _str_extend = input.string('Right', options = ['Right', 'Both ways'], title = 'Which way to extend lines', group = GROUP_ATL)
+// var string str_extend = _str_extend == 'Both ways' ? extend.both : extend.right
+
+// var bool show_crosses = input.bool(false, title = 'Show crosses', tooltip = 'Instances when closing price of a bar has crossed lower/upper trendlines', group = GROUP_ATL)
+// // }
+
+// // ----------------------------------------------------------------------------
+// // Fractal UDT and other relevant data structures: 
+// // Handle fractals and trendlines associated with them
+// // {
+// type fractal
+// 	int up_or_down = na // either TYPE_UP or TYPE_DOWN
+// 	int xloc = na
+// 	float yloc = na
+// 	int xloc_parent = na
+// 	float yloc_parent = na
+
+// var array<fractal> arr_fract = array.new<fractal>() // Can be used for multiple purposes such as:
+// // (a) connecting trendlines but added condition to skip X no. of fractals in between
+// // (b) create a zigzag, since knowing foo.parent's x and y
+// // ... possibilities are endless
+
+// var array<line> arr_ln_up = array.new_line() // Array of lines, newest elements inserted to front
+// var array<line> arr_ln_dn = array.new_line()
+
+// // @function init_fractal() returns instance of fractal that has been init'ed
+// init_fractal(int fract_type, int xloc, float yloc, int xparent, float yparent) =>
+//     f = fractal.new()
+//     f.up_or_down := fract_type
+//     f.xloc := xloc
+//     f.yloc := yloc
+//     f.xloc_parent := xparent
+//     f.yloc_parent := yparent
+
+//     ln = line.new(xloc, yloc, xparent, yparent, xloc.bar_index, str_extend, color = ln_col_recent, style = line.style_solid, width = lnwidth_recent)
+//     if f.up_or_down == TYPE_UP
+//         array.unshift(arr_ln_up, ln)
+//     else if f.up_or_down == TYPE_DOWN
+//         array.unshift(arr_ln_dn, ln)
+
+//     array.unshift(arr_fract, f)
+//     f // <- return
+
+// // @function drop_and_roll(new fractal) returns void
+// // Clean up: Drop oldest trendlines, change colors for previous trendline
+// drop_and_roll(fractal f) =>
+//     arr_ln = f.up_or_down == TYPE_UP ? arr_ln_up : f.up_or_down == TYPE_DOWN ? arr_ln_dn : na
+//     if array.size(arr_ln) > 1
+//         line.set_color(array.get(arr_ln, 1), ln_col_prev)
+//         line.set_width(array.get(arr_ln, 1), lnwidth_prev)
+//         while array.size(arr_ln) > math.floor(max_tl / 2)
+//             line.delete(array.pop(arr_ln))
+
+// // @function draw_trendline() returns void
+// draw_trendline(fract_type, x2, y2, x1, y1) =>
+//     f = init_fractal(fract_type, x2, y2, x1, y1)
+//     drop_and_roll(f)
+
+// // } end of handle for fractals
+
+// // ----------------------------------------------------------------------------
+// // Fractals, implemented using ta.pivot high && low 
+// // ----------------------------------------------------------------------------
+
+// // A Fractal is always a Pivot H/L (but a Pivot H/L is not always a Fractal):
+// float ph = ta.pivothigh(n, n)[1]
+// bool upfract = not na(ph)
+// float pl = ta.pivotlow(n, n)[1]
+// bool downfract = not na(pl)
+
+// alertcondition(not na(ph) or not na(pl), title = 'New trendline formed', message = 'New trendline formed')
+
+// // Pointers -> Recent fractals
+// // {
+// var float recent_dn1 = na
+// var int i_recent_dn1 = na
+// var float recent_up1 = na
+// var int i_recent_up1 = na
+// var float recent_dn2 = na
+// var int i_recent_dn2 = na
+// var float recent_up2 = na
+// var int i_recent_up2 = na
+
+// if downfract
+//     recent_dn2 := recent_dn1
+//     i_recent_dn2 := i_recent_dn1
+//     recent_dn1 := low[n + 1]
+//     i_recent_dn1 := bar_index - n - 1
+//     draw_trendline(TYPE_DOWN, i_recent_dn2, recent_dn2, i_recent_dn1, recent_dn1)
+
+// if upfract
+//     recent_up2 := recent_up1
+//     i_recent_up2 := i_recent_up1
+//     recent_up1 := high[n + 1]
+//     i_recent_up1 := bar_index - n - 1
+//     draw_trendline(TYPE_UP, i_recent_up2, recent_up2, i_recent_up1, recent_up1)
+
+// // }
+
+// // Plotting fractals
+// bool hh = bool(upfract and recent_up1 > recent_up2 ? high[n + 1] : na)
+// bool lh = bool(upfract and recent_up1 < recent_up2 ? high[n + 1] : na)
+// bool hl = bool(downfract and recent_dn1 > recent_dn2 ? low[n + 1] : na)
+// bool ll = bool(downfract and recent_dn1 < recent_dn2 ? low[n + 1] : na)
+
+// // plotshape(show_hh and hh, style = shape.circle, size = size.tiny, offset = -n - 1, title = 'HH', text = 'HH', location = location.abovebar, textcolor = col_hh, color = na, editable = false)
+// // plotshape(show_lh and lh, style = shape.circle, size = size.tiny, offset = -n - 1, title = 'LH', text = 'LH', location = location.abovebar, textcolor = col_lh, color = na, editable = false)
+// // plotshape(show_ll and ll, style = shape.circle, size = size.tiny, offset = -n - 1, title = 'LL', text = 'LL', location = location.belowbar, textcolor = col_ll, color = na, editable = false)
+// // plotshape(show_hl and hl, style = shape.circle, size = size.tiny, offset = -n - 1, title = 'HL', text = 'HL', location = location.belowbar, textcolor = col_hl, color = na, editable = false)
+
+// // ----------------------------------------------------------------------------
+// // Finding crosses between closing price & pair of most recent trendlines
+// // ----------------------------------------------------------------------------
+
+// // @function get_slope()
+// get_slope(xA, yA, xB, yB) =>
+//     (yB - yA) / (xB - xA)
+
+// // Solving for price at current x (bar_index), given two pairs of fractals with x values < bar_index.
+// float m_dn = get_slope(i_recent_dn1, recent_dn1, i_recent_dn2, recent_dn2)
+// float y_dn = m_dn * bar_index + recent_dn1 - m_dn * i_recent_dn1
+// float m_up = get_slope(i_recent_up1, recent_up1, i_recent_up2, recent_up2)
+// float y_up = m_up * bar_index + recent_up1 - m_up * i_recent_up1
+
+// // Plotting crosses
+// bool cross_upper = ta.cross(close, y_up)
+// bool cross_lower = ta.cross(close, y_dn)
+// plotshape(show_crosses and cross_upper, title = 'Crossed upper trendline', style = shape.xcross, location = location.belowbar, color = color.new(color = color.blue, transp = 50), size = size.small)
+// plotshape(show_crosses and cross_lower, title = 'Crossed lower trendline', style = shape.xcross, location = location.abovebar, color = color.new(color = color.red, transp = 20), size = size.small)
+
+// alertcondition(cross_upper or cross_lower, title = 'Upper/lower trendline crossed', message = 'Upper/lower trendline crossed')
+
+// new indicator: Volume Breakout Trading System: VBTS by ceyhun
+
+
+length_volume_breakout_trading_system = input.int(20, 'length', minval = 1)
+avrg_volume_breakout_trading_system = ta.sma(close, length_volume_breakout_trading_system)
+length2_volume_breakout_trading_system = input.int(50, 'length', minval = 1)
+avrg2_volume_breakout_trading_system = ta.sma(volume, length2_volume_breakout_trading_system)
+
+Buy_volume_breakout_trading_system = volume >= volume[1] * 1.5 and close > avrg_volume_breakout_trading_system and volume > avrg2_volume_breakout_trading_system
+Sell_volume_breakout_trading_system = volume >= volume[1] * 1.5 and close < avrg_volume_breakout_trading_system and volume > avrg2_volume_breakout_trading_system
+
+iff_1_volume_breakout_trading_system = close < avrg_volume_breakout_trading_system ? #FF3C3C: #000000
+colors_volume_breakout_trading_system = close > avrg_volume_breakout_trading_system ? #55C6F7 : iff_1_volume_breakout_trading_system
+
+plot(avrg_volume_breakout_trading_system, title = 'SMA', color = colors_volume_breakout_trading_system, linewidth = 10)
+
+
+// NEW INDICATOR: Auto FibONACCI RETRACEMENT BY KIVANCOZBILGIC
+
+len = input(144, 'Auto Fibo Length')
+
+hl1272a = input(1.272, 'Adjustable Fibo Level')
+
+AFL = input(false, title = 'Show Adjustable Fibo Level?')
+AFL1 = input(false, title = 'Show 1.618 Fibo Level?')
+AFL2 = input(false, title = 'Show 2.618 Fibo Level?')
+AFL3 = input(false, title = 'Show 3.618 Fibo Level?')
+
+h1 = ta.highest(high, len)
+l1 = ta.lowest(low, len)
+fark = h1 - l1
+
+hl236  = l1 + fark * 0.236
+hl382  = l1 + fark * 0.382
+hl500  = l1 + fark * 0.5
+hl618  = l1 + fark * 0.618
+hl786  = l1 + fark * 0.786
+hl1272 = l1 + fark * hl1272a
+hl1618 = l1 + fark * 1.618
+hl2618 = l1 + fark * 2.618
+hl3618 = l1 + fark * 3.618
+
+lh236  = h1 - fark * 0.236
+lh382  = h1 - fark * 0.382
+lh500  = h1 - fark * 0.5
+lh618  = h1 - fark * 0.618
+lh786  = h1 - fark * 0.786
+lh1272 = h1 - fark * hl1272a
+lh1618 = h1 - fark * 1.618
+lh2618 = h1 - fark * 2.618
+lh3618 = h1 - fark * 3.618
+
+hbars = -ta.highestbars(high, len)
+lbars = -ta.lowestbars(low, len)
+
+f236  = hbars > lbars ? hl236  : lh236
+f382  = hbars > lbars ? hl382  : lh382
+f500  = hbars > lbars ? hl500  : lh500
+f618  = hbars > lbars ? hl618  : lh618
+f786  = hbars > lbars ? hl786  : lh786
+f1272 = hbars > lbars ? hl1272 : lh1272
+f1618 = hbars > lbars ? hl1618 : lh1618
+f2618 = hbars > lbars ? hl2618 : lh2618
+f3618 = hbars > lbars ? hl3618 : lh3618
+
+// --- Draw solid horizontal lines using line.new + extend.right ---
+var line lowLine  = na
+var line highLine = na
+
+if barstate.islast
+    line.delete(lowLine)
+    line.delete(highLine)
+
+    lowLine  := line.new(bar_index - len, l1, bar_index, l1, extend = extend.right, color = color.rgb(0, 0, 0), width = 12, style = line.style_solid)
+    highLine := line.new(bar_index - len, h1, bar_index, h1, extend = extend.right, color = #000000, width = 12, style = line.style_solid)
+
+
+// new indicator: pivots traditional auto:
+pivotTypeInput = input.string(title = 'Type', defval = 'Traditional', options = ['Traditional', 'Fibonacci', 'Woodie', 'Classic', 'DM', 'Camarilla'])
+pivotAnchorInput = input.string(title = 'Pivots Timeframe', defval = 'Auto', options = ['Auto', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly', 'Biyearly', 'Triyearly', 'Quinquennially', 'Decennially'])
+maxHistoricalPivotsInput = input.int(title = 'Number of Pivots Back', defval = 15, minval = 1, maxval = 200, display = display.data_window)
+isDailyBasedInput = input.bool(title = 'Use Daily-based Values', defval = true, display = display.data_window, tooltip = 'When this option is unchecked, Pivot Points will use intraday data while calculating on intraday charts. If Extended Hours are displayed on the chart, they will be taken into account during the pivot level calculation. If intraday OHLC values are different from daily-based values (normal for stocks), the pivot levels will also differ.')
+showLabelsInput = input.bool(title = 'Show Labels', defval = true, group = 'labels', display = display.data_window)
+showPricesInput = input.bool(title = 'Show Prices', defval = true, group = 'labels', display = display.data_window)
+positionLabelsInput = input.string('Left', 'Labels Position', options = ['Left', 'Right'], group = 'labels', display = display.data_window)
+linewidthInput = input.int(title = 'Line Width', defval = 1, minval = 1, maxval = 100, group = 'levels', display = display.data_window)
+
+DEFAULT_COLOR = #FB8C00
+pColorInput = input.color(DEFAULT_COLOR, 'P‏  ‏  ‏', inline = 'P', group = 'levels', display = display.data_window)
+pShowInput = input.bool(true, '', inline = 'P', group = 'levels', display = display.data_window)
+s1ColorInput = input.color(DEFAULT_COLOR, 'S1', inline = 'S1/R1', group = 'levels', display = display.data_window)
+s1ShowInput = input.bool(true, '', inline = 'S1/R1', group = 'levels', display = display.data_window)
+r1ColorInput = input.color(DEFAULT_COLOR, '‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏R1', inline = 'S1/R1', group = 'levels', display = display.data_window)
+r1ShowInput = input.bool(true, '', inline = 'S1/R1', group = 'levels', display = display.data_window)
+s2ColorInput = input.color(DEFAULT_COLOR, 'S2', inline = 'S2/R2', group = 'levels', display = display.data_window)
+s2ShowInput = input.bool(true, '', inline = 'S2/R2', group = 'levels', display = display.data_window)
+r2ColorInput = input.color(DEFAULT_COLOR, '‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏R2', inline = 'S2/R2', group = 'levels', display = display.data_window)
+r2ShowInput = input.bool(true, '', inline = 'S2/R2', group = 'levels', tooltip = 'Not applicable to DM', display = display.data_window)
+s3ColorInput = input.color(DEFAULT_COLOR, 'S3', inline = 'S3/R3', group = 'levels', display = display.data_window)
+s3ShowInput = input.bool(true, '', inline = 'S3/R3', group = 'levels', display = display.data_window)
+r3ColorInput = input.color(DEFAULT_COLOR, '‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏R3', inline = 'S3/R3', group = 'levels', display = display.data_window)
+r3ShowInput = input.bool(true, '', inline = 'S3/R3', group = 'levels', tooltip = 'Not applicable to DM', display = display.data_window)
+s4ColorInput = input.color(DEFAULT_COLOR, 'S4', inline = 'S4/R4', group = 'levels', display = display.data_window)
+s4ShowInput = input.bool(true, '', inline = 'S4/R4', group = 'levels', display = display.data_window)
+r4ColorInput = input.color(DEFAULT_COLOR, '‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏R4', inline = 'S4/R4', group = 'levels', display = display.data_window)
+r4ShowInput = input.bool(true, '', inline = 'S4/R4', group = 'levels', tooltip = 'Not applicable to: Fibonacci, DM', display = display.data_window)
+s5ColorInput = input.color(DEFAULT_COLOR, 'S5', inline = 'S5/R5', group = 'levels', display = display.data_window)
+s5ShowInput = input.bool(true, '', inline = 'S5/R5', group = 'levels', display = display.data_window)
+r5ColorInput = input.color(DEFAULT_COLOR, '‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏R5', inline = 'S5/R5', group = 'levels', display = display.data_window)
+r5ShowInput = input.bool(true, '', inline = 'S5/R5', group = 'levels', tooltip = 'Not applicable to: Fibonacci, Woodie, Classic, DM', display = display.data_window)
+
+type graphicSettings
+	string levelName
+	color levelColor
+	bool showLevel
+
+var graphicSettingsArray = array.from(graphicSettings.new(' P', pColorInput, pShowInput), graphicSettings.new('R1', r1ColorInput, r1ShowInput), graphicSettings.new('S1', s1ColorInput, s1ShowInput), graphicSettings.new('R2', r2ColorInput, r2ShowInput), graphicSettings.new('S2', s2ColorInput, s2ShowInput), graphicSettings.new('R3', r3ColorInput, r3ShowInput), graphicSettings.new('S3', s3ColorInput, s3ShowInput), graphicSettings.new('R4', r4ColorInput, r4ShowInput), graphicSettings.new('S4', s4ColorInput, s4ShowInput), graphicSettings.new('R5', r5ColorInput, r5ShowInput), graphicSettings.new('S5', s5ColorInput, s5ShowInput))
+
+autoAnchor = switch 
+    timeframe.isintraday => timeframe.multiplier <= 15 ? '1D' : '1W'
+    timeframe.isdaily => '1M'
+    => '12M'
+
+pivotTimeframe = switch pivotAnchorInput
+    'Auto' => autoAnchor
+    'Daily' => '1D'
+    'Weekly' => '1W'
+    'Monthly' => '1M'
+    'Quarterly' => '3M'
+    => '12M'
+
+//@variable The number of years in the selected Pivot period
+pivotYearMultiplier = switch pivotAnchorInput
+    'Biyearly' => 2
+    'Triyearly' => 3
+    'Quinquennially' => 5
+    'Decennially' => 10
+    => 1
+
+//@variable The number of values in the pivots of the selected type
+numOfPivotLevels = switch pivotTypeInput
+    'Traditional' => 11
+    'Camarilla' => 11
+    'Woodie' => 9
+    'Classic' => 9
+    'Fibonacci' => 7
+    'DM' => 3
+
+type pivotGraphic
+	line pivotLine
+	label pivotLabel
+
+method delete(pivotGraphic graphic) =>
+    graphic.pivotLine.delete()
+    graphic.pivotLabel.delete()
+
+var drawnGraphics = matrix.new<pivotGraphic>()
+
+localPivotTimeframeChange = timeframe.change(pivotTimeframe) and year % pivotYearMultiplier == 0
+securityPivotTimeframeChange = timeframe.change(timeframe.period) and year % pivotYearMultiplier == 0
+
+pivotTimeframeChangeCounter(condition) =>
+    var count = 0
+    if condition and bar_index > 0
+        count := count + 1
+        count
+    count
+
+localPivots = ta.pivot_point_levels(pivotTypeInput, localPivotTimeframeChange)
+securityPivotPointsArray = ta.pivot_point_levels(pivotTypeInput, securityPivotTimeframeChange)
+
+securityTimeframe = timeframe.isintraday ? '1D' : timeframe.period
+[securityPivots, securityPivotCounter] = request.security(syminfo.tickerid, pivotTimeframe, [securityPivotPointsArray, pivotTimeframeChangeCounter(securityPivotTimeframeChange)], lookahead = barmerge.lookahead_on)
+pivotPointsArray = isDailyBasedInput ? securityPivots : localPivots
+
+//@function Sets the ending points of the currently active pivots to `endTime`.
+affixOldPivots(endTime) =>
+    if drawnGraphics.rows() > 0
+        lastGraphics = drawnGraphics.row(drawnGraphics.rows() - 1)
+
+        for graphic in lastGraphics
+            graphic.pivotLine.set_x2(endTime)
+            if positionLabelsInput == 'Right'
+                graphic.pivotLabel.set_x(endTime)
+
+//@function Draws pivot lines and labels from `startTime` to the approximate end of the period.
+drawNewPivots(startTime) =>
+
+    newGraphics = array.new<pivotGraphic>()
+
+    for [index, coord] in pivotPointsArray
+        levelSettings = graphicSettingsArray.get(index)
+        isReasonable = not na(coord) and coord > 0 and coord <= close * 5 and coord >= close * 0.1
+        if isReasonable and levelSettings.showLevel
+            lineEndTime = startTime + timeframe.in_seconds(pivotTimeframe) * 1000 * pivotYearMultiplier
+            pivotLine = line.new(startTime, coord, lineEndTime, coord, xloc = xloc.bar_time, color = levelSettings.levelColor, width = linewidthInput)
+            pivotLabel = label.new(x = positionLabelsInput == 'Left' ? startTime : lineEndTime, y = coord, text = (showLabelsInput ? levelSettings.levelName + ' ' : '') + (showPricesInput ? '(' + str.tostring(coord, format.mintick) + ')' : ''), style = positionLabelsInput == 'Left' ? label.style_label_right : label.style_label_left, textcolor = levelSettings.levelColor, color = #00000000, xloc = xloc.bar_time)
+
+            newGraphics.push(pivotGraphic.new(pivotLine, pivotLabel))
+
+    drawnGraphics.add_row(array_id = newGraphics)
+
+    if drawnGraphics.rows() > maxHistoricalPivotsInput
+        oldGraphics = drawnGraphics.remove_row(0)
+
+        for graphic in oldGraphics
+            graphic.delete()
+
+
+localPivotDrawConditionStatic = not isDailyBasedInput and localPivotTimeframeChange
+securityPivotDrawConditionStatic = isDailyBasedInput and securityPivotCounter != securityPivotCounter[1]
+
+var isMultiYearly = array.from('Biyearly', 'Triyearly', 'Quinquennially', 'Decennially').includes(pivotAnchorInput)
+localPivotDrawConditionDeveloping = not isDailyBasedInput and time_close == time_close(pivotTimeframe) and not isMultiYearly
+securityPivotDrawConditionDeveloping = false
+
+if securityPivotDrawConditionStatic or localPivotDrawConditionStatic
+    affixOldPivots(time)
+    drawNewPivots(time)
+
+// If possible, draw pivots from the beginning of the chart if none were found
+var FIRST_BAR_TIME = time
+if barstate.islastconfirmedhistory and drawnGraphics.columns() == 0
+
+    if not na(securityPivots) and securityPivotCounter > 0
+        if isDailyBasedInput
+            drawNewPivots(FIRST_BAR_TIME)
+        else
+            na
+    else
+        na
+
+// new indicator: LuxAlgo - Trendlines with breaks
+length_trendline = input.int(14, 'Swing Detection Lookback')
+mult_trendline = input.float(1., 'Slope', minval = 0, step = .1)
+calcMethod_trendline = input.string('Atr', 'Slope Calculation Method', options = ['Atr', 'Stdev', 'Linreg'])
+backpaint_trendline = input(true, tooltip = 'Backpainting offset displayed elements in the past. Disable backpainting to see real time information returned by the indicator.')
+
+//Style
+upCss_trendline = input.color(color.teal, 'Up Trendline Color', group = 'Style')
+dnCss_trendline = input.color(color.red, 'Down Trendline Color', group = 'Style')
+showExt_trendline = input(true, 'Show Extended Lines')
+
+//-----------------------------------------------------------------------------}
+//Calculations
+//-----------------------------------------------------------------------------{
+var upper_trendline = 0.
+var lower_trendline = 0.
+var slope_ph_trendline = 0.
+var slope_pl_trendline = 0.
+
+var offset_trendline = backpaint_trendline ? length_trendline : 0
+
+n_trendline = bar_index
+src_trendline = close
+
+ph_trendline = ta.pivothigh(length_trendline, length_trendline)
+pl_trendline = ta.pivotlow(length_trendline, length_trendline)
+
+//Slope Calculation Method
+slope_trendline = switch calcMethod_trendline
+    'Atr' => ta.atr(length_trendline) / length_trendline * mult_trendline
+    'Stdev' => ta.stdev(src_trendline, length_trendline) / length_trendline * mult_trendline
+    'Linreg' => math.abs(ta.sma(src_trendline * n_trendline, length_trendline) - ta.sma(src_trendline, length_trendline) * ta.sma(n_trendline, length_trendline)) / ta.variance(n_trendline, length_trendline) / 2 * mult_trendline
+
+//Get slopes and calculate trendlines
+slope_ph_trendline := bool(ph_trendline) ? slope_trendline : slope_ph_trendline
+slope_pl_trendline := bool(pl_trendline) ? slope_trendline : slope_pl_trendline
+
+upper_trendline := bool(ph_trendline) ? ph_trendline : upper_trendline - slope_ph_trendline
+lower_trendline := bool(pl_trendline) ? pl_trendline : lower_trendline + slope_pl_trendline
+
+var upos_trendline = 0
+var dnos_trendline = 0
+upos_trendline := bool(ph_trendline) ? 0 : close > upper_trendline - slope_ph_trendline * length_trendline ? 1 : upos_trendline
+dnos_trendline := bool(pl_trendline) ? 0 : close < lower_trendline + slope_pl_trendline * length_trendline ? 1 : dnos_trendline
+
+//-----------------------------------------------------------------------------}
+//Extended Lines
+//-----------------------------------------------------------------------------{
+var uptl_trendline = line.new(na, na, na, na, color = upCss_trendline, extend = extend.right, width = 4)
+var dntl_trendline = line.new(na, na, na, na, color = #ff525200, extend = extend.right, width = 4)
+
+if bool(ph_trendline) and showExt_trendline
+    uptl_trendline.set_xy1(n_trendline - offset_trendline, backpaint_trendline ? ph_trendline : upper_trendline - slope_ph_trendline * length_trendline)
+    uptl_trendline.set_xy2(n_trendline - offset_trendline + 1, backpaint_trendline ? ph_trendline - slope_trendline : upper_trendline - slope_ph_trendline * (length_trendline + 1))
+
+if bool(pl_trendline) and showExt_trendline
+    dntl_trendline.set_xy1(n_trendline - offset_trendline, backpaint_trendline ? pl_trendline : lower_trendline + slope_pl_trendline * length_trendline)
+    dntl_trendline.set_xy2(n_trendline - offset_trendline + 1, backpaint_trendline ? pl_trendline + slope_trendline : lower_trendline + slope_pl_trendline * (length_trendline + 1))
+
+//-----------------------------------------------------------------------------}
+//Plots
+//-----------------------------------------------------------------------------{
+// plot(backpaint_trendline ? upper_trendline : upper_trendline - slope_ph_trendline * length_trendline, 'Upper', color = bool(ph_trendline) ? na : upCss_trendline, offset = -offset_trendline, linewidth = 50)
+// plot(backpaint_trendline ? lower_trendline : lower_trendline + slope_pl_trendline * length_trendline, 'Lower', color = bool(pl_trendline) ? na : dnCss_trendline, offset = -offset_trendline, linewidth = 50)
+
+//Breakouts
+plotshape(upos_trendline > upos_trendline[1] ? low : na, 'Upper Break', shape.labelup, location.absolute, upCss_trendline, text = 'B', textcolor = color.white, size = size.tiny)
+
+plotshape(dnos_trendline > dnos_trendline[1] ? high : na, 'Lower Break', shape.labeldown, location.absolute, dnCss_trendline, text = 'B', textcolor = color.white, size = size.tiny)
+// new indicator: price actions volumetric ulgo
+swingLength__price_action = input.int(8, title = 'Swing Length', group = 'Price Action Volumetric Order Blocks [UAlgo] Settings')
+showLastXOb__price_action = input.int(4, title = 'Show Last X Order Blocks', minval = 1, maxval = 10, group = 'Price Action Volumetric Order Blocks [UAlgo] Settings')
+violationType__price_action = input.string('Wick', title = 'Violation Check', options = ['Wick', 'Close'], group = 'Price Action Volumetric Order Blocks [UAlgo] Settings')
+hideOverlap__price_action = input.string('True', title = 'Hide Overlap', options = ['True', 'False'], group = 'Price Action Volumetric Order Blocks [UAlgo] Settings')
+upObColor__price_action = input.color(color.rgb(0, 137, 123), title = 'Colors', group = 'Price Action Volumetric Order Blocks [UAlgo] Settings', inline = 'vs')
+downObColor__price_action = input.color(#FF8A00, title = ' ', group = 'Price Action Volumetric Order Blocks [UAlgo] Settings', inline = 'vs')
+
+type swing__price_action
+	float y__price_action = na
+	int x__price_action = na
+	bool crossed__price_action = false
+
+type ob__price_action
+	float top__price_action = na
+	float btm__price_action = na
+	int barStart__price_action
+	float bullishStr__price_action
+	float bearishStr__price_action
+	box obBox__price_action
+	box bullishBox__price_action
+	box bearishBox__price_action
+	float vol__price_action
+	bool broken__price_action
+	line seperatorLine__price_action
+	line orderTextSeperator__price_action
+
+type market__price_action
+	string msbOrBos__price_action
+	int direction__price_action
+	line marketLine__price_action
+	int lastLineTime__price_action
+	label marketLabel__price_action
+
+var array<ob__price_action> bullishOb__price_action = array.new<ob__price_action>()
+var array<ob__price_action> bearishOb__price_action = array.new<ob__price_action>()
+var market__price_action marketStructure__price_action = market__price_action.new(na, na, na, 0)
+
+var float top__price_action = na
+var float btm__price_action = na
+top__price_action := ta.pivothigh(swingLength__price_action, swingLength__price_action)
+btm__price_action := ta.pivotlow(swingLength__price_action, swingLength__price_action)
+
+
+var swing__price_action topp__price_action = swing__price_action.new()
+var swing__price_action btmm__price_action = swing__price_action.new()
+if not na(top__price_action)
+    topp__price_action.x__price_action := time[swingLength__price_action]
+    topp__price_action.y__price_action := high[swingLength__price_action]
+    topp__price_action.crossed__price_action := false
+    topp__price_action.crossed__price_action
+
+if not na(btm__price_action)
+    btmm__price_action.x__price_action := time[swingLength__price_action]
+    btmm__price_action.y__price_action := low[swingLength__price_action]
+    btmm__price_action.crossed__price_action := false
+    btmm__price_action.crossed__price_action
+
+calculateStrengths__price_action(barIndex__price_action) =>
+    float bullishStrength__price_action = 0.0
+    float bearishStrength__price_action = 0.0
+    int barsToConsider__price_action = swingLength__price_action
+
+    for i__price_action = 0 to barsToConsider__price_action - 1 by 1
+        if barIndex__price_action - i__price_action >= 0
+            float openn__price_action = open[barIndex__price_action - i__price_action]
+            float highh__price_action = high[barIndex__price_action - i__price_action]
+            float loww__price_action = low[barIndex__price_action - i__price_action]
+            float closee__price_action = close[barIndex__price_action - i__price_action]
+            float volumee__price_action = volume[barIndex__price_action - i__price_action]
+
+            if openn__price_action > closee__price_action
+                bearishStrength__price_action := bearishStrength__price_action + volumee__price_action
+                bearishStrength__price_action
+            else
+                bullishStrength__price_action := bullishStrength__price_action + volumee__price_action
+                bullishStrength__price_action
+
+    [bullishStrength__price_action, bearishStrength__price_action]
+
+isOverlapping__price_action(newBlock__price_action, existingArray__price_action) =>
+    bool flag__price_action = false
+    if existingArray__price_action.size() > 0
+        for i__price_action = 0 to existingArray__price_action.size() - 1 by 1
+            existingBlock__price_action = array.get(existingArray__price_action, i__price_action)
+            if newBlock__price_action.top__price_action >= existingBlock__price_action.btm__price_action and newBlock__price_action.top__price_action <= existingBlock__price_action.top__price_action or newBlock__price_action.btm__price_action >= existingBlock__price_action.btm__price_action and newBlock__price_action.btm__price_action <= existingBlock__price_action.top__price_action
+                flag__price_action := true
+                flag__price_action
+    flag__price_action
+
+drawBox__price_action(volatilityBlock__price_action) =>
+    // Height Scale: compress top/btm toward the block's own midpoint (width/x-values untouched)
+    float midH__price_action = (volatilityBlock__price_action.top__price_action + volatilityBlock__price_action.btm__price_action) / 2
+    float scaledTop__price_action = midH__price_action + (volatilityBlock__price_action.top__price_action - midH__price_action) * boxHeightScale
+    float scaledBtm__price_action = midH__price_action - (midH__price_action - volatilityBlock__price_action.btm__price_action) * boxHeightScale
+    volatilityBlock__price_action.bullishBox__price_action := box.new(left = volatilityBlock__price_action.barStart__price_action, right = time, top = scaledTop__price_action, bottom = scaledBtm__price_action + (scaledTop__price_action - scaledBtm__price_action) / 2, bgcolor = color.new(upObColor__price_action, 0), border_color = na, xloc = xloc.bar_time)
+    volatilityBlock__price_action.bearishBox__price_action := box.new(left = volatilityBlock__price_action.barStart__price_action, right = time, top = scaledBtm__price_action + (scaledTop__price_action - scaledBtm__price_action) / 2, bottom = scaledBtm__price_action, bgcolor = color.new(downObColor__price_action, 0), border_color = na, xloc = xloc.bar_time)
+    volatilityBlock__price_action.obBox__price_action := box.new(left = volatilityBlock__price_action.barStart__price_action, right = time, top = scaledTop__price_action, bottom = scaledBtm__price_action, bgcolor = color.new(color.gray, 80), border_color = na, xloc = xloc.bar_time)
+    volatilityBlock__price_action.seperatorLine__price_action := line.new(x1 = volatilityBlock__price_action.barStart__price_action, y1 = scaledBtm__price_action + (scaledTop__price_action - scaledBtm__price_action) / 2, x2 = time, y2 = scaledBtm__price_action + (scaledTop__price_action - scaledBtm__price_action) / 2, color = color.new(color.gray, 50), width = 1, xloc = xloc.bar_time, style = line.style_dashed)
+    volatilityBlock__price_action.orderTextSeperator__price_action := line.new(x1 = volatilityBlock__price_action.barStart__price_action, y1 = scaledTop__price_action, x2 = volatilityBlock__price_action.barStart__price_action, y2 = scaledBtm__price_action, color = color.new(color.gray, 50), xloc = xloc.bar_time, style = line.style_solid)
+    volatilityBlock__price_action.top__price_action := scaledTop__price_action
+    volatilityBlock__price_action.btm__price_action := scaledBtm__price_action
+    volatilityBlock__price_action.orderTextSeperator__price_action
+
+if close < btmm__price_action.y__price_action and btmm__price_action.crossed__price_action == false
+    btmm__price_action.crossed__price_action := true
+    marketStructure__price_action.msbOrBos__price_action := na(marketStructure__price_action.msbOrBos__price_action) ? 'msb' : marketStructure__price_action.direction__price_action == -1 ? 'bos' : 'msb'
+    marketStructure__price_action.direction__price_action := -1
+    lineColor__price_action = color.red
+    marketStructure__price_action.marketLine__price_action := line.new(x1 = btmm__price_action.x__price_action, y1 = btmm__price_action.y__price_action, x2 = time, y2 = btmm__price_action.y__price_action, xloc = xloc.bar_time, color = lineColor__price_action)
+    marketStructure__price_action.lastLineTime__price_action := btmm__price_action.x__price_action
+    labelText__price_action = marketStructure__price_action.msbOrBos__price_action == 'msb' ? 'MSB' : 'BOS'
+    labelX__price_action = math.round(math.avg(btmm__price_action.x__price_action, time))
+    marketStructure__price_action.marketLabel__price_action := label.new(x = labelX__price_action, y = btmm__price_action.y__price_action, text = labelText__price_action, color = color.new(color.white, 100), textcolor = lineColor__price_action, style = label.style_label_up, xloc = xloc.bar_time, size = size.tiny)
+
+    float highAndGreenTop__price_action = 0
+    float highAndGreenBtm__price_action = 0
+    int highAndGreenTime__price_action = 0
+    int selectedIndex__price_action = 0
+    float vol__price_action = na
+    for i__price_action = 1 to swingLength__price_action by 1
+        if close[i__price_action] > open[i__price_action] and high[i__price_action] > highAndGreenTop__price_action
+            highAndGreenTop__price_action := high[i__price_action]
+            highAndGreenBtm__price_action := low[i__price_action]
+            highAndGreenTime__price_action := time[i__price_action]
+            vol__price_action := volume[i__price_action]
+            selectedIndex__price_action := i__price_action
+            selectedIndex__price_action
+
+    [bullishStrength__price_action, bearishStrength__price_action] = calculateStrengths__price_action(selectedIndex__price_action)
+
+    newOb__price_action = ob__price_action.new(highAndGreenTop__price_action, highAndGreenBtm__price_action, highAndGreenTime__price_action)
+    newOb__price_action.bullishStr__price_action := bullishStrength__price_action
+    newOb__price_action.bearishStr__price_action := bearishStrength__price_action
+    newOb__price_action.vol__price_action := vol__price_action
+    newOb__price_action.broken__price_action := false
+
+    if not isOverlapping__price_action(newOb__price_action, bearishOb__price_action) and hideOverlap__price_action == 'True'
+        array.push(bearishOb__price_action, newOb__price_action)
+        drawBox__price_action(newOb__price_action)
+    if hideOverlap__price_action == 'False'
+        array.push(bearishOb__price_action, newOb__price_action)
+        drawBox__price_action(newOb__price_action)
+
+    if array.size(bearishOb__price_action) > showLastXOb__price_action
+        oldOb__price_action = array.shift(bearishOb__price_action)
+        box.delete(oldOb__price_action.bullishBox__price_action)
+        box.delete(oldOb__price_action.bearishBox__price_action)
+        box.delete(oldOb__price_action.obBox__price_action)
+        line.delete(oldOb__price_action.seperatorLine__price_action)
+        line.delete(oldOb__price_action.orderTextSeperator__price_action)
+
+else if close > topp__price_action.y__price_action and topp__price_action.crossed__price_action == false
+    topp__price_action.crossed__price_action := true
+    marketStructure__price_action.msbOrBos__price_action := na(marketStructure__price_action.msbOrBos__price_action) ? 'msb' : marketStructure__price_action.direction__price_action == 1 ? 'bos' : 'msb'
+    marketStructure__price_action.direction__price_action := 1
+    lineColor__price_action = color.green
+    marketStructure__price_action.marketLine__price_action := line.new(x1 = topp__price_action.x__price_action, y1 = topp__price_action.y__price_action, x2 = time, y2 = topp__price_action.y__price_action, xloc = xloc.bar_time, color = lineColor__price_action)
+    marketStructure__price_action.lastLineTime__price_action := topp__price_action.x__price_action
+    labelText__price_action = marketStructure__price_action.msbOrBos__price_action == 'msb' ? 'MSB' : 'BOS'
+    labelX__price_action = math.round(math.avg(topp__price_action.x__price_action, time))
+    marketStructure__price_action.marketLabel__price_action := label.new(x = labelX__price_action, y = topp__price_action.y__price_action, text = labelText__price_action, color = color.new(color.white, 100), textcolor = lineColor__price_action, style = label.style_label_down, xloc = xloc.bar_time, size = size.tiny)
+
+    float lowAndRedBtm__price_action = 999999999999
+    float lowAndRedTop__price_action = na
+    int lowAndRedTime__price_action = 0
+    int selectedIndex__price_action = 0
+    float vol__price_action = na
+    for i__price_action = 1 to swingLength__price_action by 1
+        if close[i__price_action] < open[i__price_action] and low[i__price_action] < lowAndRedBtm__price_action
+            lowAndRedBtm__price_action := low[i__price_action]
+            lowAndRedTop__price_action := high[i__price_action]
+            lowAndRedTime__price_action := time[i__price_action]
+            vol__price_action := volume[i__price_action]
+            selectedIndex__price_action := i__price_action
+            selectedIndex__price_action
+
+    [bullishStrength__price_action, bearishStrength__price_action] = calculateStrengths__price_action(selectedIndex__price_action)
+
+    newOb__price_action = ob__price_action.new(lowAndRedTop__price_action, lowAndRedBtm__price_action, lowAndRedTime__price_action)
+    newOb__price_action.bullishStr__price_action := bullishStrength__price_action
+    newOb__price_action.bearishStr__price_action := bearishStrength__price_action
+    newOb__price_action.vol__price_action := vol__price_action
+    newOb__price_action.broken__price_action := false
+
+    if not isOverlapping__price_action(newOb__price_action, bullishOb__price_action) and hideOverlap__price_action == 'True'
+        array.push(bullishOb__price_action, newOb__price_action)
+        drawBox__price_action(newOb__price_action)
+    if hideOverlap__price_action == 'False'
+        array.push(bullishOb__price_action, newOb__price_action)
+        drawBox__price_action(newOb__price_action)
+
+    if array.size(bullishOb__price_action) > showLastXOb__price_action
+        oldOb__price_action = array.shift(bullishOb__price_action)
+        box.delete(oldOb__price_action.bullishBox__price_action)
+        box.delete(oldOb__price_action.bearishBox__price_action)
+        box.delete(oldOb__price_action.obBox__price_action)
+        line.delete(oldOb__price_action.seperatorLine__price_action)
+        line.delete(oldOb__price_action.orderTextSeperator__price_action)
+
+if array.size(bullishOb__price_action) > 0
+    for i__price_action = 0 to array.size(bullishOb__price_action) - 1 by 1
+        currentOb__price_action = array.get(bullishOb__price_action, i__price_action)
+        totalStr__price_action = currentOb__price_action.bullishStr__price_action + currentOb__price_action.bearishStr__price_action
+        bullishBoxWidth__price_action = currentOb__price_action.bullishStr__price_action / totalStr__price_action * ((currentOb__price_action.obBox__price_action.get_left() + time) / 2 - currentOb__price_action.barStart__price_action)
+        bearishBoxWidth__price_action = currentOb__price_action.bearishStr__price_action / totalStr__price_action * ((currentOb__price_action.obBox__price_action.get_left() + time) / 2 - currentOb__price_action.barStart__price_action)
+        currentOb__price_action.bullishBox__price_action.set_right(math.round(currentOb__price_action.barStart__price_action + bullishBoxWidth__price_action))
+        currentOb__price_action.bearishBox__price_action.set_right(math.round(currentOb__price_action.barStart__price_action + bearishBoxWidth__price_action))
+        currentOb__price_action.obBox__price_action.set_right(time)
+        line.set_xy2(currentOb__price_action.seperatorLine__price_action, (currentOb__price_action.obBox__price_action.get_left() + time) / 2, currentOb__price_action.btm__price_action + (currentOb__price_action.top__price_action - currentOb__price_action.btm__price_action) / 2)
+
+        line.set_xy1(currentOb__price_action.orderTextSeperator__price_action, (currentOb__price_action.obBox__price_action.get_left() + time) / 2, currentOb__price_action.top__price_action)
+        line.set_xy2(currentOb__price_action.orderTextSeperator__price_action, (currentOb__price_action.obBox__price_action.get_left() + time) / 2, currentOb__price_action.btm__price_action)
+
+        violation__price_action = violationType__price_action == 'Wick' and low < currentOb__price_action.btm__price_action or violationType__price_action == 'Close' and close < currentOb__price_action.btm__price_action
+
+        if violation__price_action
+            box.delete(currentOb__price_action.bullishBox__price_action)
+            box.delete(currentOb__price_action.bearishBox__price_action)
+            box.delete(currentOb__price_action.obBox__price_action)
+            line.delete(currentOb__price_action.seperatorLine__price_action)
+            line.delete(currentOb__price_action.orderTextSeperator__price_action)
+            array.remove(bullishOb__price_action, i__price_action)
+            break
+
+if array.size(bearishOb__price_action) > 0
+    for i__price_action = 0 to array.size(bearishOb__price_action) - 1 by 1
+        currentOb__price_action = array.get(bearishOb__price_action, i__price_action)
+        totalStr__price_action = currentOb__price_action.bullishStr__price_action + currentOb__price_action.bearishStr__price_action
+        bullishBoxWidth__price_action = currentOb__price_action.bullishStr__price_action / totalStr__price_action * ((currentOb__price_action.obBox__price_action.get_left() + time) / 2 - currentOb__price_action.barStart__price_action)
+        bearishBoxWidth__price_action = currentOb__price_action.bearishStr__price_action / totalStr__price_action * ((currentOb__price_action.obBox__price_action.get_left() + time) / 2 - currentOb__price_action.barStart__price_action)
+        currentOb__price_action.bullishBox__price_action.set_right(math.round(currentOb__price_action.barStart__price_action + bullishBoxWidth__price_action))
+        currentOb__price_action.bearishBox__price_action.set_right(math.round(currentOb__price_action.barStart__price_action + bearishBoxWidth__price_action))
+        currentOb__price_action.obBox__price_action.set_right(time)
+        line.set_xy2(currentOb__price_action.seperatorLine__price_action, (currentOb__price_action.obBox__price_action.get_left() + time) / 2, currentOb__price_action.btm__price_action + (currentOb__price_action.top__price_action - currentOb__price_action.btm__price_action) / 2)
+
+        line.set_xy1(currentOb__price_action.orderTextSeperator__price_action, (currentOb__price_action.obBox__price_action.get_left() + time) / 2, currentOb__price_action.top__price_action)
+        line.set_xy2(currentOb__price_action.orderTextSeperator__price_action, (currentOb__price_action.obBox__price_action.get_left() + time) / 2, currentOb__price_action.btm__price_action)
+
+        violation__price_action = violationType__price_action == 'Wick' and high > currentOb__price_action.top__price_action or violationType__price_action == 'Close' and close > currentOb__price_action.top__price_action
+
+        if violation__price_action
+            box.delete(currentOb__price_action.bullishBox__price_action)
+            box.delete(currentOb__price_action.bearishBox__price_action)
+            box.delete(currentOb__price_action.obBox__price_action)
+            line.delete(currentOb__price_action.seperatorLine__price_action)
+            line.delete(currentOb__price_action.orderTextSeperator__price_action)
+            array.remove(bearishOb__price_action, i__price_action)
+            break
+
+
+
+//new indicator: smart money concepts:
+
+
+//-----------------------------------------------------------------------------}
+// CONSTANTS
+//-----------------------------------------------------------------------------{
+BULLISH_LEG  = 1
+BEARISH_LEG  = 0
+BULLISH      = +1
+BEARISH      = -1
+
+ATR          = 'Atr'
+RANGE        = 'Cumulative Mean Range'
+CLOSE        = 'Close'
+HIGHLOW      = 'High/Low'
+
+BLOCKS_GROUP = 'Order Blocks'
+
+//-----------------------------------------------------------------------------}
+// INPUTS
+//-----------------------------------------------------------------------------{
+showInternalOrderBlocksInput   = input(        true,       'Internal Order Blocks',   group = BLOCKS_GROUP, inline = 'iob')
+internalOrderBlocksSizeInput   = input.int(    5,          '',                        group = BLOCKS_GROUP, minval = 1, maxval = 20, inline = 'iob')
+showSwingOrderBlocksInput      = input(        true,       'Swing Order Blocks',      group = BLOCKS_GROUP, inline = 'ob')
+swingOrderBlocksSizeInput      = input.int(    5,          '',                        group = BLOCKS_GROUP, minval = 1, maxval = 20, inline = 'ob')
+orderBlockFilterInput          = input.string( ATR,        'Order Block Filter',      group = BLOCKS_GROUP, options = [ATR, RANGE])
+orderBlockMitigationInput      = input.string( HIGHLOW,    'Order Block Mitigation',  group = BLOCKS_GROUP, options = [CLOSE, HIGHLOW])
+internalBullishOrderBlockColor = input.color(color.new(#3179f5, 80), 'Internal Bullish OB', group = BLOCKS_GROUP)
+internalBearishOrderBlockColor = input.color(color.new(#f77c80, 80), 'Internal Bearish OB', group = BLOCKS_GROUP)
+swingBullishOrderBlockColor    = input.color(color.new(#1848cc, 80), 'Bullish OB',          group = BLOCKS_GROUP)
+swingBearishOrderBlockColor    = input.color(color.new(#b22833, 80), 'Bearish OB',          group = BLOCKS_GROUP)
+
+swingsLengthInput = input.int(50, 'Swing Detection Length', minval = 10)
+
+//-----------------------------------------------------------------------------}
+// DATA STRUCTURES
+//-----------------------------------------------------------------------------{
+// Pivot point
+type pivot
+    float currentLevel
+    float lastLevel
+    bool  crossed
+    int   barTime  = time
+    int   barIndex = bar_index
+
+// Order block
+type orderBlock
+    float barHigh
+    float barLow
+    int   barTime
+    int   bias
+
+// Trend bias wrapper (UDT fields are mutable inside functions, plain globals are not)
+type trend
+    int bias
+
+//-----------------------------------------------------------------------------}
+// VARIABLES
+//-----------------------------------------------------------------------------{
+var pivot swingHigh   = pivot.new(na, na, false)
+var pivot swingLow    = pivot.new(na, na, false)
+var pivot internalHigh = pivot.new(na, na, false)
+var pivot internalLow  = pivot.new(na, na, false)
+
+// Trend bias instances (UDT fields can be mutated inside functions)
+var trend internalTrend = trend.new(0)
+var trend swingTrend    = trend.new(0)
+
+// Order block arrays
+var array<orderBlock> swingOrderBlocks    = array.new<orderBlock>()
+var array<orderBlock> internalOrderBlocks = array.new<orderBlock>()
+
+// Box arrays (pre-created for performance)
+var array<box> swingOrderBlocksBoxes    = array.new<box>()
+var array<box> internalOrderBlocksBoxes = array.new<box>()
+
+// Pre-create boxes on first bar
+if barstate.isfirst
+    if showSwingOrderBlocksInput
+        for i = 1 to swingOrderBlocksSizeInput
+            swingOrderBlocksBoxes.push(box.new(na, na, na, na, xloc = xloc.bar_time, extend = extend.right))
+    if showInternalOrderBlocksInput
+        for i = 1 to internalOrderBlocksSizeInput
+            internalOrderBlocksBoxes.push(box.new(na, na, na, na, xloc = xloc.bar_time, extend = extend.right))
+
+// Volatility / parsed high-low arrays
+var array<float> parsedHighs = array.new<float>()
+var array<float> parsedLows  = array.new<float>()
+var array<float> highs       = array.new<float>()
+var array<float> lows        = array.new<float>()
+var array<int>   times       = array.new<int>()
+
+atrMeasure       = ta.atr(200)
+volatilityMeasure = orderBlockFilterInput == ATR ? atrMeasure : ta.cum(ta.tr) / bar_index
+highVolatilityBar = (high - low) >= (2 * volatilityMeasure)
+parsedHigh        = highVolatilityBar ? low : high
+parsedLow         = highVolatilityBar ? high : low
+
+parsedHighs.push(parsedHigh)
+parsedLows.push(parsedLow)
+highs.push(high)
+lows.push(low)
+times.push(time)
+
+bearishMitigationSrc = orderBlockMitigationInput == CLOSE ? close : high
+bullishMitigationSrc = orderBlockMitigationInput == CLOSE ? close : low
+
+//-----------------------------------------------------------------------------}
+// FUNCTIONS
+//-----------------------------------------------------------------------------{
+// Determine current leg direction
+leg(int size) =>
+    var int l = 0
+    if high[size] > ta.highest(size)
+        l := BEARISH_LEG
+    else if low[size] < ta.lowest(size)
+        l := BULLISH_LEG
+    l
+
+startOfNewLeg(int l)     => ta.change(l) != 0
+startOfBearishLeg(int l) => ta.change(l) == -1
+startOfBullishLeg(int l) => ta.change(l) == +1
+
+// Store an order block from the pivot range
+storeOrderBlock(pivot p_ivot, bool internal, int bias) =>
+    if (not internal and showSwingOrderBlocksInput) or (internal and showInternalOrderBlocksInput)
+        array<float> a_rray = na
+        int parsedIndex = na
+
+        if bias == BEARISH
+            a_rray      := parsedHighs.slice(p_ivot.barIndex, bar_index)
+            parsedIndex := p_ivot.barIndex + a_rray.indexof(a_rray.max())
+        else
+            a_rray      := parsedLows.slice(p_ivot.barIndex, bar_index)
+            parsedIndex := p_ivot.barIndex + a_rray.indexof(a_rray.min())
+
+        orderBlock ob              = orderBlock.new(parsedHighs.get(parsedIndex), parsedLows.get(parsedIndex), times.get(parsedIndex), bias)
+        array<orderBlock> obArray  = internal ? internalOrderBlocks : swingOrderBlocks
+
+        if obArray.size() >= 100
+            obArray.pop()
+        obArray.unshift(ob)
+
+// Remove mitigated order blocks
+deleteOrderBlocks(bool internal) =>
+    array<orderBlock> obArray = internal ? internalOrderBlocks : swingOrderBlocks
+    for [i, ob] in obArray
+        bool crossed = false
+        if bearishMitigationSrc > ob.barHigh and ob.bias == BEARISH
+            crossed := true
+        else if bullishMitigationSrc < ob.barLow and ob.bias == BULLISH
+            crossed := true
+        if crossed
+            obArray.remove(i)
+
+// Draw order blocks as boxes
+drawOrderBlocks(bool internal) =>
+    array<orderBlock> obArray = internal ? internalOrderBlocks : swingOrderBlocks
+    int obSize = obArray.size()
+    if obSize > 0
+        int maxOB              = internal ? internalOrderBlocksSizeInput : swingOrderBlocksSizeInput
+        array<orderBlock> parsed = obArray.slice(0, math.min(maxOB, obSize))
+        array<box> boxes       = internal ? internalOrderBlocksBoxes : swingOrderBlocksBoxes
+
+        for [i, ob] in parsed
+            color obColor =
+                 internal
+                 ? (ob.bias == BEARISH ? internalBearishOrderBlockColor : internalBullishOrderBlockColor)
+                 : (ob.bias == BEARISH ? swingBearishOrderBlockColor    : swingBullishOrderBlockColor)
+
+            // Height Scale: compress top/bottom toward the block's own midpoint (right edge/x-values untouched)
+            float midSMC = (ob.barHigh + ob.barLow) / 2
+            float scaledHighSMC = midSMC + (ob.barHigh - midSMC) * boxHeightScale
+            float scaledLowSMC  = midSMC - (midSMC - ob.barLow) * boxHeightScale
+
+            box b = boxes.get(i)
+            b.set_top_left_point(    chart.point.new(ob.barTime,    na, scaledHighSMC))
+            b.set_bottom_right_point(chart.point.new(last_bar_time, na, scaledLowSMC))
+            b.set_border_color(internal ? na : obColor)
+            b.set_bgcolor(obColor)
+
+// Track pivot points and trigger order block storage on structure breaks
+getCurrentStructure(int size, bool internal) =>
+    int  currentLeg = leg(size)
+    bool newPivot   = startOfNewLeg(currentLeg)
+    bool pivotLow   = startOfBullishLeg(currentLeg)
+    bool pivotHigh  = startOfBearishLeg(currentLeg)
+
+    if newPivot
+        if pivotLow
+            pivot p = internal ? internalLow : swingLow
+            p.lastLevel    := p.currentLevel
+            p.currentLevel := low[size]
+            p.crossed      := false
+            p.barTime      := time[size]
+            p.barIndex     := bar_index[size]
+        else
+            pivot p = internal ? internalHigh : swingHigh
+            p.lastLevel    := p.currentLevel
+            p.currentLevel := high[size]
+            p.crossed      := false
+            p.barTime      := time[size]
+            p.barIndex     := bar_index[size]
+
+// Detect structure breaks and store order blocks accordingly
+displayStructure(bool internal) =>
+    pivot  ph = internal ? internalHigh : swingHigh
+    pivot  pl = internal ? internalLow  : swingLow
+    trend  t  = internal ? internalTrend : swingTrend
+
+    // Bullish break of structure
+    extraBull = internal ? internalHigh.currentLevel != swingHigh.currentLevel : true
+    if ta.crossover(close, ph.currentLevel) and not ph.crossed and extraBull
+        ph.crossed := true
+        t.bias     := BULLISH
+        if (internal and showInternalOrderBlocksInput) or (not internal and showSwingOrderBlocksInput)
+            storeOrderBlock(ph, internal, BULLISH)
+
+    // Bearish break of structure
+    extraBear = internal ? internalLow.currentLevel != swingLow.currentLevel : true
+    if ta.crossunder(close, pl.currentLevel) and not pl.crossed and extraBear
+        pl.crossed := true
+        t.bias     := BEARISH
+        if (internal and showInternalOrderBlocksInput) or (not internal and showSwingOrderBlocksInput)
+            storeOrderBlock(pl, internal, BEARISH)
+
+//-----------------------------------------------------------------------------}
+// EXECUTION
+//-----------------------------------------------------------------------------}
+// Track swing pivots (swing uses swingsLengthInput, internal uses 5)
+getCurrentStructure(swingsLengthInput, false)
+getCurrentStructure(5, true)
+
+// Detect breaks and store OBs
+if showInternalOrderBlocksInput or showSwingOrderBlocksInput
+    displayStructure(true)
+    displayStructure(false)
+
+// Mitigate crossed OBs
+if showInternalOrderBlocksInput
+    deleteOrderBlocks(true)
+if showSwingOrderBlocksInput
+    deleteOrderBlocks(false)
+
+// Draw on last confirmed / realtime bar
+if barstate.islastconfirmedhistory or barstate.islast
+    if showInternalOrderBlocksInput
+        drawOrderBlocks(true)
+    if showSwingOrderBlocksInput
+        drawOrderBlocks(false)
+
+
+// new indicator: pa toolkit lite (ualgo) :
+
+zigzagBool = input.bool(false, 'Show Market Structure', group = 'Price Action Toolkit Settings')
+zigzagLen = input.int(9, 'ZigZag Length', group = 'Price Action Toolkit Settings')
+liquidityBool = input.bool(true, 'Show Liquidity Sweeps', group = 'Liquidity Settings')
+liquidity_len = input.int(30, 'Liquidity Length', minval = 5, group = 'Liquidity Settings')
+orderblockBool = input.bool(true, 'Show Order Blocks', group = 'Order Block Settings')
+numberObShow = input.int(2, 'Number of Order Blocks to Show', group = 'Order Block Settings', minval = 1, maxval = 10)
+showTrendLines = input.bool(true, 'Show Trend Lines', group = 'Misc')
+trendLineLength = input.int(20, 'Trend Line Detection Sensitivity', group = 'Misc', minval = 10)
+upTlColor = input.color(color.new(color.teal, 15), title = 'Trend Line Colors', group = 'Misc', inline = 'tl')
+downTlColor = input.color(color.new(color.red, 15), title = ' ', group = 'Misc', inline = 'tl')
+upColor = input.color(color.new(color.teal, 15), title = 'Market/Liquidity Colors', group = 'Visual Settings', inline = '1')
+downColor = input.color(color.new(color.red, 15), title = ' ', group = 'Visual Settings', inline = '1')
+bearishOrderblockColor = input.color(color.new(color.red, 100), title = 'Order Block Colors ', group = 'Visual Settings', inline = '2')
+bullishOrderblockColor = input.color(color.new(#00bcd4, 80), title = ' ', group = 'Visual Settings', inline = '2')
+hideWatermark = input.bool(false, title = 'Hide Watermark', group = 'Visual Settings')
+
+type orderblock
+	float value
+	int barStart
+	int barEnd
+	box block
+	bool broken
+
+type liquidity
+	float value
+	int barStart
+	int barEnd
+	line liquidityLine
+	bool broken
+	label sweep
+
+type zone
+	float value
+	int barStart
+	int barEnd
+	box block
+	string zoneType
+
+
+
+var array<orderblock> bullishOrderblock = array.new<orderblock>()
+var array<orderblock> bearishOrderblock = array.new<orderblock>()
+var array<liquidity> bullishLiquidity = array.new<liquidity>()
+var array<liquidity> bearishLiquidity = array.new<liquidity>()
+var array<int> highValIndex = array.new<int>()
+var array<int> lowValIndex = array.new<int>()
+var array<float> highVal = array.new_float()
+var array<float> lowVal = array.new_float()
+
+var bool drawUp = false
+var bool drawDown = false
+var string lastState = na
+var bool to_up = false
+var bool to_down = false
+var int trend = 1
+var float fibTopVal = na
+var int fibTopIndex = na
+var float fibBotVal = na
+var int fibBotIndex = na
+var float premiumVal = na
+var float discountVal = na
+var int premiumValIndex = na
+var int discountValIndex = na
+var box premiumBox = na
+var box discountBox = na
+var label premiumLabel = na
+var label discountLabel = na
+var string textOfPremium = na
+var string textOfDiscount = na
+var line newBearishTrendline = na
+var line newBullishTrendline = na
+
+atr = ta.atr(14)
+
+to_up := high[zigzagLen] >= ta.highest(high, zigzagLen)
+to_down := low[zigzagLen] <= ta.lowest(low, zigzagLen)
+
+trend := trend == 1 and to_down ? -1 : trend == -1 and to_up ? 1 : trend
+
+drawZigzag(x1, y1, x2, y2) =>
+    line.new(x1 = x1, y1 = y1, x2 = x2, y2 = y2, xloc = xloc.bar_time, width = 1)
+
+if ta.change(trend) != 0 and trend == 1
+    array.push(highValIndex, time[zigzagLen])
+    array.push(highVal, high[zigzagLen])
+    if array.size(lowVal) > 1
+        lastLowVal = array.get(lowVal, array.size(lowVal) - 1)
+        lastLowIndex = array.get(lowValIndex, array.size(lowValIndex) - 1)
+        lastHighIndex = array.get(highValIndex, array.size(highValIndex) - 1)
+        lastHighVal = array.get(highVal, array.size(highVal) - 1)
+        if zigzagBool
+            drawZigzag(x1 = lastLowIndex, y1 = lastLowVal, x2 = lastHighIndex, y2 = lastHighVal)
+        drawUp := false
+        drawUp
+    fibTopIndex := time[zigzagLen]
+    fibTopVal := high[zigzagLen]
+    fibTopVal
+
+if ta.change(trend) != 0 and trend == -1
+    array.push(lowValIndex, time[zigzagLen])
+    array.push(lowVal, low[zigzagLen])
+    if array.size(highVal) > 1
+        lastHighVal = array.get(highVal, array.size(highVal) - 1)
+        lastHighIndex = array.get(highValIndex, array.size(highValIndex) - 1)
+        lastLowIndex = array.get(lowValIndex, array.size(lowValIndex) - 1)
+        lastLowVal = array.get(lowVal, array.size(lowVal) - 1)
+        if zigzagBool
+            drawZigzag(x1 = lastHighIndex, y1 = lastHighVal, x2 = lastLowIndex, y2 = lastLowVal)
+        drawDown := false
+        drawDown
+    fibBotIndex := time[zigzagLen]
+    fibBotVal := low[zigzagLen]
+    fibBotVal
+
+if array.size(lowVal) > 1 and drawDown == false
+    if close < array.get(lowVal, array.size(lowVal) - 1)
+
+        line.new(x1 = array.get(lowValIndex, array.size(lowValIndex) - 1), y1 = array.get(lowVal, array.size(lowVal) - 1), x2 = time, y2 = array.get(lowVal, array.size(lowVal) - 1), width = 1, xloc = xloc.bar_time)
+        label.new(x = (array.get(lowValIndex, array.size(lowValIndex) - 1) + time) / 2, y = array.get(lowVal, array.size(lowVal) - 1), text = na(lastState) or lastState == 'up' ? 'CHoCH' : 'BoS', xloc = xloc.bar_time, style = label.style_label_up, textcolor = downColor, color = color.new(color.white, 100))
+        drawDown := true
+        lastState := 'down'
+        if orderblockBool
+            orderblock newOrderblock = orderblock.new()
+            float max = 0
+            int bar = na
+            
+            // --- FIX STARTS HERE ---
+            // 1. Get the previous time from your array
+            float prevTime = array.get(lowValIndex, array.size(lowValIndex) - 1)
+            
+            // 2. Calculate the duration of the current bar
+            float barDuration = time - time[1]
+            
+            // 3. Calculate how many bars ago that was
+            // We use math.floor to get an integer
+            int barsAgo = math.floor((time - prevTime - barDuration) / barDuration)
+            
+            // 4. CRITICAL STEP: Limit the lookback to 4900 to prevent crashing
+            // If the gap is bigger than 4900 bars, we stop at 4900.
+            int i_start = math.min(barsAgo, 4900)
+            
+            // Ensure it is not negative
+            i_start := math.max(i_start, 0)
+
+            // 5. Run the loop using the safe 'i_start' variable
+            for i = i_start to 0 by 1
+                if high[i] > max
+                    max := high[i]
+                    bar := time[i]
+            // --- FIX ENDS HERE ---
+
+            newOrderblock.barStart := bar
+            newOrderblock.barEnd := time
+            newOrderblock.broken := false
+            newOrderblock.value := max
+            newOrderblock.block := box.new(left = newOrderblock.barStart, top = newOrderblock.value - atr * boxHeightScale, right = newOrderblock.barEnd, bottom = newOrderblock.value, xloc = xloc.bar_time, bgcolor = bearishOrderblockColor, border_width = 1, border_color = bearishOrderblockColor)
+            array.push(bearishOrderblock, newOrderblock)
+            if array.size(bearishOrderblock) > 20
+                array.shift(bearishOrderblock)
+
+if array.size(highVal) > 1 and drawUp == false
+    if close > array.get(highVal, array.size(highVal) - 1)
+
+        line.new(x1 = array.get(highValIndex, array.size(highValIndex) - 1), y1 = array.get(highVal, array.size(highVal) - 1), x2 = time, y2 = array.get(highVal, array.size(highVal) - 1), width = 1, xloc = xloc.bar_time)
+        label.new(x = (array.get(highValIndex, array.size(highValIndex) - 1) + time) / 2, y = array.get(highVal, array.size(highVal) - 1), text = na(lastState) or lastState == 'down' ? 'CHoCH' : 'BoS', xloc = xloc.bar_time, style = label.style_label_down, textcolor = upColor, color = color.new(color.white, 100))
+        drawUp := true
+        lastState := 'up'
+        if orderblockBool
+            orderblock newOrderblock = orderblock.new()
+            float min = 999999999
+            int bar = na
+            for i = (time - array.get(highValIndex, array.size(highValIndex) - 1) - (time - time[1])) / (time - time[1]) to 0 by 1
+                if low[i] < min
+                    min := low[i]
+                    bar := time[i]
+                    bar
+
+            newOrderblock.barStart := bar
+            newOrderblock.barEnd := time
+            newOrderblock.broken := false
+            newOrderblock.value := min
+            newOrderblock.block := box.new(left = newOrderblock.barStart, top = newOrderblock.value + atr * boxHeightScale, right = newOrderblock.barEnd, bottom = newOrderblock.value, xloc = xloc.bar_time, bgcolor = bullishOrderblockColor, border_width = 1, border_color = bullishOrderblockColor)
+            array.push(bullishOrderblock, newOrderblock)
+            if array.size(bullishOrderblock) > 20
+                array.shift(bullishOrderblock)
+
+// Order block
+
+//update orderblock
+if array.size(bullishOrderblock) > 0
+    orderblock testOrderblock = na
+    int counter = 0
+    for i = array.size(bullishOrderblock) - 1 to 0 by 1
+        testOrderblock := array.get(bullishOrderblock, i)
+        if counter < numberObShow
+            testOrderblock.block.set_right(time)
+            if close < testOrderblock.value
+                testOrderblock.block.delete()
+                array.remove(bullishOrderblock, i)
+            counter := counter + 1
+            counter
+        else
+            testOrderblock.block.set_right(testOrderblock.barStart)
+
+if array.size(bearishOrderblock) > 0
+    orderblock testOrderblock = na
+    int counter = 0
+    for i = array.size(bearishOrderblock) - 1 to 0 by 1
+        testOrderblock := array.get(bearishOrderblock, i)
+        if counter < numberObShow
+            testOrderblock.block.set_right(time)
+            if close > testOrderblock.value
+                testOrderblock.block.delete()
+                array.remove(bearishOrderblock, i)
+            counter := counter + 1
+            counter
+        else
+            testOrderblock.block.set_right(testOrderblock.barStart)
+
+// Liquidity
+
+phLiquidity = ta.pivothigh(high, liquidity_len, liquidity_len)
+plLiquidity = ta.pivotlow(low, liquidity_len, liquidity_len)
+
+if not na(phLiquidity) and liquidityBool
+    liquidity newLiquidity = liquidity.new()
+    newLiquidity.value := high[liquidity_len]
+    newLiquidity.barStart := time[liquidity_len]
+    newLiquidity.barEnd := time
+    newLiquidity.broken := false
+    newLiquidity.liquidityLine := line.new(x1 = newLiquidity.barStart, y1 = newLiquidity.value, x2 = newLiquidity.barEnd, y2 = newLiquidity.value, xloc = xloc.bar_time, color = downColor, width = 1)
+    array.push(bearishLiquidity, newLiquidity)
+    if array.size(bearishLiquidity) > 7
+        deletedLiquidity = array.shift(bearishLiquidity)
+        deletedLiquidity.liquidityLine.delete()
+
+if not na(plLiquidity) and liquidityBool
+    liquidity newLiquidity = liquidity.new()
+    newLiquidity.value := low[liquidity_len]
+    newLiquidity.barStart := time[liquidity_len]
+    newLiquidity.barEnd := time
+    newLiquidity.broken := false
+    newLiquidity.liquidityLine := line.new(x1 = newLiquidity.barStart, y1 = newLiquidity.value, x2 = newLiquidity.barEnd, y2 = newLiquidity.value, xloc = xloc.bar_time, color = upColor, width = 1)
+    array.push(bullishLiquidity, newLiquidity)
+    if array.size(bullishLiquidity) > 7
+        deletedLiquidity = array.shift(bullishLiquidity)
+        deletedLiquidity.liquidityLine.delete()
+
+// Update liquidity
+if array.size(bearishLiquidity) > 0
+    liquidity testLiquidity = na
+    for i = array.size(bearishLiquidity) - 1 to 0 by 1
+        testLiquidity := array.get(bearishLiquidity, i)
+        if high > testLiquidity.value
+            testLiquidity.liquidityLine.set_x2(time)
+            testLiquidity.liquidityLine.set_style(line.style_dashed)
+            array.remove(bearishLiquidity, i)
+            if close < testLiquidity.value
+                testLiquidity.sweep := label.new(x = time, y = high, text = 'x', xloc = xloc.bar_time, style = label.style_label_down, size = size.normal, textcolor = color.new(color.purple, 0), color = color.new(color.white, 100))
+                testLiquidity.sweep
+
+        else
+            testLiquidity.liquidityLine.set_x2(time)
+
+if array.size(bullishLiquidity) > 0
+    liquidity testLiquidity = na
+    for i = array.size(bullishLiquidity) - 1 to 0 by 1
+        testLiquidity := array.get(bullishLiquidity, i)
+        if low < testLiquidity.value
+            testLiquidity.liquidityLine.set_x2(time)
+            testLiquidity.liquidityLine.set_style(line.style_dashed)
+            array.remove(bullishLiquidity, i)
+            if close > testLiquidity.value
+                testLiquidity.sweep := label.new(x = time, y = low, text = 'x', xloc = xloc.bar_time, style = label.style_label_up, size = size.normal, textcolor = color.new(color.teal, 0), color = color.new(color.white, 100))
+                testLiquidity.sweep
+
+        else
+            testLiquidity.liquidityLine.set_x2(time)
+
+//Watermark
+// if not hideWatermark
+//     var tableData = table.new(position = position.top_right, columns = 1, rows = 1, frame_color = color.orange, frame_width = 0)
+//     table.cell(tableData, 0, 0, 'UAlgo', text_color = color.new(color.orange, 0), text_size = size.large)
+
+// Trendlines
+
+extendTrendline(lineId, startIndex, startValue, endIndex, endValue) =>
+    slope = (endValue - startValue) / (endIndex - startIndex)
+    newEndIndex = bar_index
+    newEndValue = startValue + slope * (newEndIndex - startIndex)
+    line.set_x2(lineId, newEndIndex)
+    line.set_y2(lineId, newEndValue)
+
+getSlope(startIndex, startValue, endIndex, endValue) =>
+    slope = (endValue - startValue) / (endIndex - startIndex)
+    slope
+if showTrendLines
+    phTrend = ta.pivothigh(high, trendLineLength, trendLineLength)
+    plTrend = ta.pivotlow(low, trendLineLength, trendLineLength)
+
+    bullishTrendLineStart = ta.valuewhen(not na(plTrend), bar_index[trendLineLength], 1)
+    bullishTrendLineEnd = ta.valuewhen(not na(plTrend), bar_index[trendLineLength], 0)
+    bearishTrendLineStart = ta.valuewhen(not na(phTrend), bar_index[trendLineLength], 1)
+    bearishTrendLineEnd = ta.valuewhen(not na(phTrend), bar_index[trendLineLength], 0)
+
+    bullishTrendLineStartVal = ta.valuewhen(not na(plTrend), low[trendLineLength], 1)
+    bullishTrendLineEndVal = ta.valuewhen(not na(plTrend), low[trendLineLength], 0)
+    bearishTrendLineStartVal = ta.valuewhen(not na(phTrend), high[trendLineLength], 1)
+    bearishTrendLineEndVal = ta.valuewhen(not na(phTrend), high[trendLineLength], 0)
+
+    line.delete(newBearishTrendline)
+    line.delete(newBullishTrendline)
+
+    slopeBearish = getSlope(bearishTrendLineStart, bearishTrendLineStartVal, bearishTrendLineEnd, bearishTrendLineEndVal)
+    slopeBullish = getSlope(bullishTrendLineStart, bullishTrendLineStartVal, bullishTrendLineEnd, bullishTrendLineEndVal)
+
+    // if slopeBearish < 0
+    //     newBearishTrendline := line.new(x1 = bearishTrendLineStart, y1 = bearishTrendLineStartVal, x2 = bar_index, y2 = bearishTrendLineEndVal, xloc = xloc.bar_index, color = downTlColor, width = 60)
+    //     newBearishTrendline
+    // if slopeBullish > 0
+    //     newBullishTrendline := line.new(x1 = bullishTrendLineStart, y1 = bullishTrendLineStartVal, x2 = bar_index, y2 = bullishTrendLineEndVal, xloc = xloc.bar_index, color = upTlColor, width = 60)
+    //     newBullishTrendline
+
+    // Extend the trendlines
+    if not na(newBearishTrendline)
+        extendTrendline(newBearishTrendline, bearishTrendLineStart, bearishTrendLineStartVal, bearishTrendLineEnd, bearishTrendLineEndVal)
+
+    if not na(newBullishTrendline)
+        extendTrendline(newBullishTrendline, bullishTrendLineStart, bullishTrendLineStartVal, bullishTrendLineEnd, bullishTrendLineEndVal)
+
+
+
+// alertcondition(buy__ut_bot_alerts, 'UT Long', 'UT Long')
+// alertcondition(sell__ut_bot_alerts, 'UT Short', 'UT Short')
+
+// new indicator: Super Trend by KIVANCOZBILGIC:
+
+Periods_super_trend_ = input(title = 'ATR Period', defval = 9)
+src_super_trend_ = input(hl2, title = 'Source')
+Multiplier_super_trend_ = input.float(title = 'ATR Multiplier', step = 0.1, defval = 1.0)
+changeATR_super_trend_ = input(title = 'Change ATR Calculation Method ?', defval = false)
+showsignals_super_trend_ = input(title = 'Show Buy/Sell Signals ?', defval = false)
+highlighting_super_trend_ = input(title = 'Highlighter On/Off ?', defval = true)
+
+atr2_super_trend_ = ta.sma(ta.tr, Periods_super_trend_)
+atr_super_trend_ = changeATR_super_trend_ ? ta.atr(Periods_super_trend_) : atr2_super_trend_
+
+up_super_trend_ = src_super_trend_ - Multiplier_super_trend_ * atr_super_trend_
+up1_super_trend_ = nz(up_super_trend_[1], up_super_trend_)
+up_super_trend_ := close[1] > up1_super_trend_ ? math.max(up_super_trend_, up1_super_trend_) : up_super_trend_
+
+dn_super_trend_ = src_super_trend_ + Multiplier_super_trend_ * atr_super_trend_
+dn1_super_trend_ = nz(dn_super_trend_[1], dn_super_trend_)
+dn_super_trend_ := close[1] < dn1_super_trend_ ? math.min(dn_super_trend_, dn1_super_trend_) : dn_super_trend_
+
+trend_super_trend_ = 1
+trend_super_trend_ := nz(trend_super_trend_[1], trend_super_trend_)
+trend_super_trend_ := trend_super_trend_ == -1 and close > dn1_super_trend_ ? 1 : trend_super_trend_ == 1 and close < up1_super_trend_ ? -1 : trend_super_trend_
+
+upPlot_super_trend_ = plot(
+     trend_super_trend_ == 1 ? up_super_trend_ : na,
+     title = 'Up Trend',
+     style = plot.style_linebr,
+     linewidth = 6,
+     color = color.new(color.green, 0)
+)
+
+buySignal_super_trend_ = trend_super_trend_ == 1 and trend_super_trend_[1] == -1
+
+plotshape(
+     buySignal_super_trend_ ? up_super_trend_ : na,
+     title = 'UpTrend Begins',
+     location = location.absolute,
+     style = shape.circle,
+     size = size.tiny,
+     color = color.new(color.green, 0)
+)
+
+plotshape(
+     buySignal_super_trend_ and showsignals_super_trend_ ? up_super_trend_ : na,
+     title = 'Buy',
+     text = 'Buy',
+     location = location.absolute,
+     style = shape.labelup,
+     size = size.tiny,
+     color = color.new(color.green, 0),
+     textcolor = color.new(color.white, 0)
+)
+
+dnPlot_super_trend_ = plot(
+     trend_super_trend_ == 1 ? na : dn_super_trend_,
+     title = 'Down Trend',
+     style = plot.style_linebr,
+     linewidth = 4,
+     color = color.new(color.red, 0)
+)
+
+sellSignal_super_trend_ = trend_super_trend_ == -1 and trend_super_trend_[1] == 1
+
+plotshape(
+     sellSignal_super_trend_ ? dn_super_trend_ : na,
+     title = 'DownTrend Begins',
+     location = location.absolute,
+     style = shape.circle,
+     size = size.tiny,
+     color = color.new(color.red, 0)
+)
+
+plotshape(
+     sellSignal_super_trend_ and showsignals_super_trend_ ? dn_super_trend_ : na,
+     title = 'Sell',
+     text = 'Sell',
+     location = location.absolute,
+     style = shape.labeldown,
+     size = size.tiny,
+     color = color.new(color.red, 0),
+     textcolor = color.new(color.white, 0)
+)
+
+mPlot_super_trend_ = plot(
+     ohlc4,
+     title = '',
+     style = plot.style_circles,
+     linewidth = math.max(1, 0)
+)
+
+longFillColor_super_trend_ = highlighting_super_trend_ ? trend_super_trend_ == 1 ? #4caf4f6e : color.white : color.white
+shortFillColor_super_trend_ = highlighting_super_trend_ ? trend_super_trend_ == -1 ? #ff52522d : color.white : color.white
+
+fill(
+     mPlot_super_trend_,
+     upPlot_super_trend_,
+     title = 'UpTrend Highligter',
+     color = longFillColor_super_trend_
+)
+
+fill(
+     mPlot_super_trend_,
+     dnPlot_super_trend_,
+     title = 'DownTrend Highligter',
+     color = shortFillColor_super_trend_
+)
+
+// // new indicator: EMA 10/20/50/100/200
+
+
+
+// shortest__ = ta.ema(close, 10)
+// shorter__  = ta.ema(close, 20)
+// short__    = ta.ema(close, 50)
+// longer__   = ta.ema(close, 100)
+// longest__  = ta.ema(close, 200)
+
+// plot(shortest__, color= #66bb6a,    title="EMA 10")
+// plot(shorter__,  color=#ff9800, title="EMA 20")
+// plot(short__,    color=color.rgb(255, 255, 255, 100), title="EMA 50")
+// plot(longer__,   color=color.rgb(255, 255, 255, 100),  title="EMA 100")
+// plot(longest__,  color=#0404fd,   title="EMA 200", linewidth = 6)
+
+
+// // new indicator: Kernel Regression Estimate
+
+// // Kernel Settings
+// h__kernal_regression_estimate   = input.int(8,    'Lookback Window',   minval=3)
+// r__kernal_regression_estimate   = input.float(8., 'Relative Weighting', step=0.25)
+// x__kernal_regression_estimate   = input.int(25,   'Regression Level')
+// lag__kernal_regression_estimate = input.int(2,    'Lag')
+
+// useKernelSmoothing__kernal_regression_estimate = input.bool(false, 'Enhance Kernel Smoothing')
+// showKernelEstimate__kernal_regression_estimate = input.bool(true,  'Show Kernel Estimate')
+
+// src__kernal_regression_estimate = input.source(close, 'Source')
+
+// // Kernel Calculations
+// yhat1__kernal_regression_estimate = kernels.rationalQuadratic(
+//     src__kernal_regression_estimate,
+//     h__kernal_regression_estimate,
+//     r__kernal_regression_estimate,
+//     x__kernal_regression_estimate
+// )
+
+// yhat2__kernal_regression_estimate = kernels.gaussian(
+//     src__kernal_regression_estimate,
+//     h__kernal_regression_estimate - lag__kernal_regression_estimate,
+//     x__kernal_regression_estimate
+// )
+
+// kernelEstimate__kernal_regression_estimate = yhat1__kernal_regression_estimate
+
+// // Rate of change for color
+// bool wasBullishRate__kernal_regression_estimate = yhat1__kernal_regression_estimate[2] < yhat1__kernal_regression_estimate[1]
+// bool isBullishRate__kernal_regression_estimate  = yhat1__kernal_regression_estimate[1] < yhat1__kernal_regression_estimate
+
+// bool isBullishSmooth__kernal_regression_estimate = yhat2__kernal_regression_estimate >= yhat1__kernal_regression_estimate
+
+// // Colors
+// c_green__kernal_regression_estimate = color.new(#3F4D42, 0)
+// c_red__kernal_regression_estimate   = color.new(#E91E63, 0)
+// transparent__kernal_regression_estimate = color.new(#000000, 100)
+
+// color colorByCross__kernal_regression_estimate = isBullishSmooth__kernal_regression_estimate ? c_green__kernal_regression_estimate : c_red__kernal_regression_estimate
+// color colorByRate__kernal_regression_estimate  = isBullishRate__kernal_regression_estimate ? c_green__kernal_regression_estimate : c_red__kernal_regression_estimate
+
+// color plotColor__kernal_regression_estimate =
+//      showKernelEstimate__kernal_regression_estimate ?
+//      (useKernelSmoothing__kernal_regression_estimate ?
+//      colorByCross__kernal_regression_estimate :
+//      colorByRate__kernal_regression_estimate) :
+//      transparent__kernal_regression_estimate
+
+// plot(
+//     kernelEstimate__kernal_regression_estimate,
+//     color=plotColor__kernal_regression_estimate,
+//     linewidth=6,
+//     title='Kernel Regression Estimate'
+// )
+
+// new indicator: Dynamic Swing Anchored VWAP: Zeiirman
+// ~~ Tooltips {
+var string t1_Dynamic_Swing_Anchored_VWAP = "Number of bars used to detect swing highs and lows. Larger values identify bigger, more significant swings but react slower. Smaller values detect more frequent swings but may produce more noise."
+var string t2_Dynamic_Swing_Anchored_VWAP = "Controls how quickly the VWAP adjusts to new price action. Lower values make the VWAP react faster (tighter to price), higher values make it smoother and slower to change."
+var string t3_Dynamic_Swing_Anchored_VWAP = "When enabled, the VWAP reaction speed changes automatically based on market volatility. High volatility shortens the tracking period (more responsive), low volatility lengthens it (smoother)."
+var string t4_Dynamic_Swing_Anchored_VWAP = "Controls how strongly volatility influences the VWAP reaction speed. Values above 1 increase the effect of volatility changes; values below 1 make it less sensitive to volatility."
+var string t5_Dynamic_Swing_Anchored_VWAP = "Color used for swing high/low labels drawn on the chart to indicate pivot points."
+var string t6_Dynamic_Swing_Anchored_VWAP = "Color used for swing low labels when marking pivot points."
+var string t7_Dynamic_Swing_Anchored_VWAP = "Color used for the Upper / Bearish VWAP line (anchored from swing high)."
+var string t8_Dynamic_Swing_Anchored_VWAP = "Color used for the Lower / Bullish VWAP line (anchored from swing low)."
+var string t9_Dynamic_Swing_Anchored_VWAP = "Width of the VWAP lines drawn on the chart. Larger values make the lines thicker and more visible."
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Inputs {
+prd_Dynamic_Swing_Anchored_VWAP     = input.int(50, title='Swing Period', minval=2, group='Swing Points', tooltip=t1_Dynamic_Swing_Anchored_VWAP)
+baseAPT_Dynamic_Swing_Anchored_VWAP = input.float(20, 'Adaptive Price Tracking', minval=1, step=1, group='Swing Points', tooltip=t2_Dynamic_Swing_Anchored_VWAP)
+useAdapt_Dynamic_Swing_Anchored_VWAP= input.bool(false, 'Adapt APT by ATR ratio', group='Swing Points', tooltip=t3_Dynamic_Swing_Anchored_VWAP)
+volBias_Dynamic_Swing_Anchored_VWAP = input.float(10.0, 'Volatility Bias', minval=0.1, step=0.1, group='Swing Points', tooltip=t4_Dynamic_Swing_Anchored_VWAP)
+
+highS_Dynamic_Swing_Anchored_VWAP   = input.color(color.lime, title="Swing Labels", group="Style", inline="Swing", tooltip=t5_Dynamic_Swing_Anchored_VWAP)
+lowS_Dynamic_Swing_Anchored_VWAP    = input.color(color.red,  title="", group="Style", inline="Swing", tooltip=t6_Dynamic_Swing_Anchored_VWAP)
+
+// Upper (from Swing High) = #5500FE (Blue) | Lower (from Swing Low / LL) = #B210FD (Purple)
+upper_bearish_col                   = input.color(#FF8458, title="Upper (High) / Lower (Low)", group="Style", inline="VWAP", tooltip=t7_Dynamic_Swing_Anchored_VWAP)
+lower_bullish_col                   = input.color(#01F1BF, title="", group="Style", inline="VWAP", tooltip=t8_Dynamic_Swing_Anchored_VWAP)
+xx_Dynamic_Swing_Anchored_VWAP      = input.int(14, minval=1, title="Width", group="Style", inline="VWAP", tooltip=t9_Dynamic_Swing_Anchored_VWAP)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Global Variable {
+b_Dynamic_Swing_Anchored_VWAP = bar_index
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ PIVOTS Variables {
+var float ph_Dynamic_Swing_Anchored_VWAP   = na
+var float pl_Dynamic_Swing_Anchored_VWAP   = na
+var int   phL_Dynamic_Swing_Anchored_VWAP  = b_Dynamic_Swing_Anchored_VWAP
+var int   plL_Dynamic_Swing_Anchored_VWAP  = b_Dynamic_Swing_Anchored_VWAP
+var float prev_Dynamic_Swing_Anchored_VWAP = na
+
+ph_Dynamic_Swing_Anchored_VWAP  := ta.highestbars(high, prd_Dynamic_Swing_Anchored_VWAP) == 0 ? high : ph_Dynamic_Swing_Anchored_VWAP
+pl_Dynamic_Swing_Anchored_VWAP  := ta.lowestbars(low,  prd_Dynamic_Swing_Anchored_VWAP) == 0 ? low  : pl_Dynamic_Swing_Anchored_VWAP
+phL_Dynamic_Swing_Anchored_VWAP := ta.highestbars(high, prd_Dynamic_Swing_Anchored_VWAP) == 0 ? b_Dynamic_Swing_Anchored_VWAP : phL_Dynamic_Swing_Anchored_VWAP
+plL_Dynamic_Swing_Anchored_VWAP := ta.lowestbars(low,  prd_Dynamic_Swing_Anchored_VWAP) == 0 ? b_Dynamic_Swing_Anchored_VWAP : plL_Dynamic_Swing_Anchored_VWAP
+dir_Dynamic_Swing_Anchored_VWAP = phL_Dynamic_Swing_Anchored_VWAP > plL_Dynamic_Swing_Anchored_VWAP ? 1 : -1
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Adaptation {
+atrLen_Dynamic_Swing_Anchored_VWAP = 50
+atr_Dynamic_Swing_Anchored_VWAP    = ta.atr(atrLen_Dynamic_Swing_Anchored_VWAP)
+atrAvg_Dynamic_Swing_Anchored_VWAP = ta.rma(atr_Dynamic_Swing_Anchored_VWAP, atrLen_Dynamic_Swing_Anchored_VWAP)
+ratio_Dynamic_Swing_Anchored_VWAP  = atrAvg_Dynamic_Swing_Anchored_VWAP > 0 ? atr_Dynamic_Swing_Anchored_VWAP / atrAvg_Dynamic_Swing_Anchored_VWAP : 1.0
+
+aptRaw_Dynamic_Swing_Anchored_VWAP     = useAdapt_Dynamic_Swing_Anchored_VWAP ? baseAPT_Dynamic_Swing_Anchored_VWAP / math.pow(ratio_Dynamic_Swing_Anchored_VWAP, volBias_Dynamic_Swing_Anchored_VWAP) : baseAPT_Dynamic_Swing_Anchored_VWAP
+aptClamped_Dynamic_Swing_Anchored_VWAP = math.max(5.0, math.min(300.0, aptRaw_Dynamic_Swing_Anchored_VWAP))
+aptSeries_Dynamic_Swing_Anchored_VWAP  = math.round(aptClamped_Dynamic_Swing_Anchored_VWAP)
+
+alphaFromAPT(float apt_Dynamic_Swing_Anchored_VWAP) =>
+    decay_Dynamic_Swing_Anchored_VWAP = math.exp(-math.log(2.0) / math.max(1.0, apt_Dynamic_Swing_Anchored_VWAP))
+    1.0 - decay_Dynamic_Swing_Anchored_VWAP
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ VWAP Variables {
+var float p_Dynamic_Swing_Anchored_VWAP   = hlc3 * volume 
+var float vol_Dynamic_Swing_Anchored_VWAP = volume      
+
+type dataPoints
+    array<chart.point> points
+    polyline poly = na
+
+var dataPoints vwap_Dynamic_Swing_Anchored_VWAP = dataPoints.new(array.new<chart.point>())
+var float current_vwap = na
+
+// dir > 0 anchors to plL (Swing Low / LL / HL) -> Purple (#B210FD)
+// dir < 0 anchors to phL (Swing High / HH / LH) -> Blue (#5500FE)
+active_vwap_color = dir_Dynamic_Swing_Anchored_VWAP > 0 ? lower_bullish_col : upper_bearish_col
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Main {
+if dir_Dynamic_Swing_Anchored_VWAP != dir_Dynamic_Swing_Anchored_VWAP[1]
+    x_Dynamic_Swing_Anchored_VWAP   = dir_Dynamic_Swing_Anchored_VWAP > 0 ? plL_Dynamic_Swing_Anchored_VWAP : phL_Dynamic_Swing_Anchored_VWAP
+    y_Dynamic_Swing_Anchored_VWAP   = dir_Dynamic_Swing_Anchored_VWAP > 0 ? pl_Dynamic_Swing_Anchored_VWAP  : ph_Dynamic_Swing_Anchored_VWAP
+    loc_Dynamic_Swing_Anchored_VWAP = dir_Dynamic_Swing_Anchored_VWAP > 0 ? label.style_label_up : label.style_label_down
+    col_Dynamic_Swing_Anchored_VWAP = dir_Dynamic_Swing_Anchored_VWAP > 0 ? highS_Dynamic_Swing_Anchored_VWAP : lowS_Dynamic_Swing_Anchored_VWAP
+    txt_Dynamic_Swing_Anchored_VWAP = dir_Dynamic_Swing_Anchored_VWAP > 0 and pl_Dynamic_Swing_Anchored_VWAP < prev_Dynamic_Swing_Anchored_VWAP ? 'LL' : dir_Dynamic_Swing_Anchored_VWAP > 0 and pl_Dynamic_Swing_Anchored_VWAP > prev_Dynamic_Swing_Anchored_VWAP ? 'HL' : dir_Dynamic_Swing_Anchored_VWAP < 0 and ph_Dynamic_Swing_Anchored_VWAP < prev_Dynamic_Swing_Anchored_VWAP ? 'LH' : dir_Dynamic_Swing_Anchored_VWAP < 0 and ph_Dynamic_Swing_Anchored_VWAP > prev_Dynamic_Swing_Anchored_VWAP ? 'HH' : ''
+    label.new(x_Dynamic_Swing_Anchored_VWAP, y_Dynamic_Swing_Anchored_VWAP, text=txt_Dynamic_Swing_Anchored_VWAP, style=loc_Dynamic_Swing_Anchored_VWAP, color=color.new(col_Dynamic_Swing_Anchored_VWAP, 20), textcolor=color.white)
+    prev_Dynamic_Swing_Anchored_VWAP := dir_Dynamic_Swing_Anchored_VWAP > 0 ? ph_Dynamic_Swing_Anchored_VWAP[1] : pl_Dynamic_Swing_Anchored_VWAP[1]
+
+    barsback_Dynamic_Swing_Anchored_VWAP = b_Dynamic_Swing_Anchored_VWAP - x_Dynamic_Swing_Anchored_VWAP
+    p_Dynamic_Swing_Anchored_VWAP   := y_Dynamic_Swing_Anchored_VWAP * volume[barsback_Dynamic_Swing_Anchored_VWAP]
+    vol_Dynamic_Swing_Anchored_VWAP := volume[barsback_Dynamic_Swing_Anchored_VWAP]
+    vap_Dynamic_Swing_Anchored_VWAP = p_Dynamic_Swing_Anchored_VWAP / vol_Dynamic_Swing_Anchored_VWAP
+
+    // Delete active line handle and preserve the previous completed segment using its previous direction color
+    vwap_Dynamic_Swing_Anchored_VWAP.poly.delete()
+    prev_vwap_color = dir_Dynamic_Swing_Anchored_VWAP[1] > 0 ? lower_bullish_col : upper_bearish_col
+    polyline.new(vwap_Dynamic_Swing_Anchored_VWAP.points, false, false, line_color = prev_vwap_color, line_width = xx_Dynamic_Swing_Anchored_VWAP)
+    vwap_Dynamic_Swing_Anchored_VWAP.points.clear()
+
+    for i_Dynamic_Swing_Anchored_VWAP = barsback_Dynamic_Swing_Anchored_VWAP to 0 by 1
+        apt_i_Dynamic_Swing_Anchored_VWAP = aptSeries_Dynamic_Swing_Anchored_VWAP[i_Dynamic_Swing_Anchored_VWAP]
+        alpha_Dynamic_Swing_Anchored_VWAP = alphaFromAPT(apt_i_Dynamic_Swing_Anchored_VWAP)
+
+        pxv_Dynamic_Swing_Anchored_VWAP   = hlc3[i_Dynamic_Swing_Anchored_VWAP] * volume[i_Dynamic_Swing_Anchored_VWAP]
+        v_i_Dynamic_Swing_Anchored_VWAP   = volume[i_Dynamic_Swing_Anchored_VWAP]
+
+        p_Dynamic_Swing_Anchored_VWAP     := (1.0 - alpha_Dynamic_Swing_Anchored_VWAP) * p_Dynamic_Swing_Anchored_VWAP + alpha_Dynamic_Swing_Anchored_VWAP * pxv_Dynamic_Swing_Anchored_VWAP
+        vol_Dynamic_Swing_Anchored_VWAP   := (1.0 - alpha_Dynamic_Swing_Anchored_VWAP) * vol_Dynamic_Swing_Anchored_VWAP + alpha_Dynamic_Swing_Anchored_VWAP * v_i_Dynamic_Swing_Anchored_VWAP
+        vappe_Dynamic_Swing_Anchored_VWAP = vol_Dynamic_Swing_Anchored_VWAP > 0 ? p_Dynamic_Swing_Anchored_VWAP / vol_Dynamic_Swing_Anchored_VWAP : na
+
+        vwap_Dynamic_Swing_Anchored_VWAP.points.push(chart.point.from_index(b_Dynamic_Swing_Anchored_VWAP - i_Dynamic_Swing_Anchored_VWAP, vappe_Dynamic_Swing_Anchored_VWAP))
+        if i_Dynamic_Swing_Anchored_VWAP == 0
+            current_vwap := vappe_Dynamic_Swing_Anchored_VWAP
+
+    vwap_Dynamic_Swing_Anchored_VWAP.poly := polyline.new(vwap_Dynamic_Swing_Anchored_VWAP.points, false, false, line_color = active_vwap_color, line_width = xx_Dynamic_Swing_Anchored_VWAP)
+
+else
+    apt_0_Dynamic_Swing_Anchored_VWAP = aptSeries_Dynamic_Swing_Anchored_VWAP
+    alpha_Dynamic_Swing_Anchored_VWAP = alphaFromAPT(apt_0_Dynamic_Swing_Anchored_VWAP)
+
+    pxv_Dynamic_Swing_Anchored_VWAP = hlc3 * volume
+    v0_Dynamic_Swing_Anchored_VWAP  = volume
+
+    p_Dynamic_Swing_Anchored_VWAP   := (1.0 - alpha_Dynamic_Swing_Anchored_VWAP) * p_Dynamic_Swing_Anchored_VWAP + alpha_Dynamic_Swing_Anchored_VWAP * pxv_Dynamic_Swing_Anchored_VWAP
+    vol_Dynamic_Swing_Anchored_VWAP := (1.0 - alpha_Dynamic_Swing_Anchored_VWAP) * vol_Dynamic_Swing_Anchored_VWAP + alpha_Dynamic_Swing_Anchored_VWAP * v0_Dynamic_Swing_Anchored_VWAP
+    vap_Dynamic_Swing_Anchored_VWAP = vol_Dynamic_Swing_Anchored_VWAP > 0 ? p_Dynamic_Swing_Anchored_VWAP / vol_Dynamic_Swing_Anchored_VWAP : na
+
+    current_vwap := vap_Dynamic_Swing_Anchored_VWAP
+
+    vwap_Dynamic_Swing_Anchored_VWAP.poly.delete()
+    vwap_Dynamic_Swing_Anchored_VWAP.points.push(chart.point.from_index(b_Dynamic_Swing_Anchored_VWAP, vap_Dynamic_Swing_Anchored_VWAP))
+    vwap_Dynamic_Swing_Anchored_VWAP.poly := polyline.new(vwap_Dynamic_Swing_Anchored_VWAP.points, false, false, line_color = active_vwap_color, line_width = xx_Dynamic_Swing_Anchored_VWAP)
+//~~ }
+
+// ~~ Data Window Outputs {
+plot(current_vwap, title="Current VWAP Value", color=color.new(color.white, 100), display=display.data_window)
+plot(dir_Dynamic_Swing_Anchored_VWAP, title="Swing Bias (+1 Buy / -1 Sell)", color=color.new(color.white, 100), display=display.data_window)
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+// // new indicator: trend duration forecast [chartprime]
+// // --------------------------------------------------------------------------------------------------------------------}
+// // 📌 𝙐𝙎𝙀𝙍 𝙄𝙉𝙋𝙐𝙏𝙎
+// // --------------------------------------------------------------------------------------------------------------------{
+
+// length_trend_duration_forecast = input.int(
+//      50,
+//      title = "Smoothing Length",
+//      tooltip = "Defines how many bars are used for the Hull Moving Average (HMA). A longer length smooths out short-term noise but increases lag."
+//  )
+// trendLength_trend_duration_forecast = input.int(
+//      3,
+//      title = "Trend Detection Sensitivity",
+//      tooltip = "Controls how many consecutive bars are checked for rising/falling HMA slope. Lower values make trends switch faster, higher values make them more stable."
+//  )
+// samples_trend_duration_forecast = input.int(
+//      10,
+//      title = "Trend Sample Size",
+//      minval = 2,
+//      tooltip = "Defines how many past trend durations are stored to calculate the average probable trend length. Larger samples produce smoother probability estimates."
+//  )
+// coloUP_trend_duration_forecast = input.color(color.rgb(18, 228, 158), "↑ Trend", inline = "col")
+// coloDN_trend_duration_forecast = input.color(color.rgb(236, 86, 16), "↓ Trend", inline = "col")
+
+
+// extend_mult = input.float(1.0, "Extend Multiplier", minval = 1.0, step = 0.5,
+//      tooltip = "Multiplies the average trend duration to extend the forecast line further right.")
+// extend_extra = input.int(0, "Extend Extra Bars", minval = 0,
+//      tooltip = "Adds a fixed number of extra bars to the right extension of the forecast line.")
+
+// var trend_trend_duration_forecast = bool(na)
+// var TrendCount_trend_duration_forecast = 0
+// var bullishCount_trend_duration_forecast = array.new<int>()
+// var bearishCount_trend_duration_forecast = array.new<int>()
+// var LengthLine_trend_duration_forecast = line(na)
+
+// // --------------------------------------------------------------------------------------------------------------------}
+// // 📌 𝙄𝙉𝘿𝙄𝘾𝘼𝙏𝙊𝙍 𝘾𝘼𝙇𝘾𝙐𝙇𝘼𝙏𝙄𝙊𝙉𝙎
+// // --------------------------------------------------------------------------------------------------------------------{
+
+// series float hma_trend_duration_forecast = ta.hma(close, length_trend_duration_forecast)
+
+// if barstate.isconfirmed
+//     if ta.rising(hma_trend_duration_forecast, trendLength_trend_duration_forecast)
+//         trend_trend_duration_forecast := true
+//     if ta.falling(hma_trend_duration_forecast, trendLength_trend_duration_forecast)
+//         trend_trend_duration_forecast := false
+
+// if trend_trend_duration_forecast or not trend_trend_duration_forecast
+//     TrendCount_trend_duration_forecast += 1
+
+// if trend_trend_duration_forecast != trend_trend_duration_forecast[1]
+//     LengthLine_trend_duration_forecast.delete()
+//     if trend_trend_duration_forecast
+//         bearishCount_trend_duration_forecast.push(TrendCount_trend_duration_forecast)
+//         LengthLine_trend_duration_forecast := line.new(
+//              bar_index - 1, hma_trend_duration_forecast[1], bar_index, hma_trend_duration_forecast[1],
+//              color = #b121f3, width = 4, style = line.style_arrow_right
+//          )
+//     else
+//         bullishCount_trend_duration_forecast.push(TrendCount_trend_duration_forecast)
+//         LengthLine_trend_duration_forecast := line.new(
+//              bar_index - 1, hma_trend_duration_forecast[1], bar_index, hma_trend_duration_forecast[1],
+//              color = chart.fg_color, style = line.style_arrow_right
+//          )
+//     TrendCount_trend_duration_forecast := 0
+
+// // DYNAMIC LINE UPDATES
+// if not trend_trend_duration_forecast
+//     LengthLine_trend_duration_forecast.set_x2(LengthLine_trend_duration_forecast.get_x1() + int(bearishCount_trend_duration_forecast.avg() * extend_mult) + extend_extra)
+//     LengthLine_trend_duration_forecast.set_color(#ff525200)
+//     LengthLine_trend_duration_forecast.set_width(14)
+// else
+//     LengthLine_trend_duration_forecast.set_x2(LengthLine_trend_duration_forecast.get_x1() + int(bullishCount_trend_duration_forecast.avg() * extend_mult) + extend_extra)
+
+// if bullishCount_trend_duration_forecast.size() > samples_trend_duration_forecast
+//     bullishCount_trend_duration_forecast.shift()
+// if bearishCount_trend_duration_forecast.size() > samples_trend_duration_forecast
+//     bearishCount_trend_duration_forecast.shift()
+
+// // --------------------------------------------------------------------------------------------------------------------}
+// // 📌 𝙑𝙄𝙎𝙐𝘼𝙇𝙄𝙕𝘼𝙏𝙄𝙊𝙉
+// // --------------------------------------------------------------------------------------------------------------------{
+
+// TColor_trend_duration_forecast = trend_trend_duration_forecast ? coloUP_trend_duration_forecast : coloDN_trend_duration_forecast
+// plot(hma_trend_duration_forecast, "HMA", TColor_trend_duration_forecast, linewidth = 2)
+
+// new indicator: ema
+// ———————— Inputs ————————
+// EMA Lengths
+ema20_len   = input.int(20, 'EMA 20 Length', group='Moving Average', minval=1)
+ema200_len  = input.int(200, 'EMA 200 Length', group='Moving Average', minval=1)
+
+// Display Options - EMA 20
+show_ema20_curve = input.bool(true, 'Show 20 EMA Curve Line', group='EMA 20 Display Options')
+show_ema20_dots  = input.bool(true, 'Show 20 EMA Dotted Line', group='EMA 20 Display Options')
+
+// Display Options - EMA 200
+show_ema200_curve = input.bool(true, 'Show 200 EMA Curve Line', group='EMA 200 Display Options')
+show_ema200_dots  = input.bool(true, 'Show 200 EMA Dotted Line', group='EMA 200 Display Options')
+
+// Style Settings - EMA 20
+ema20_color   = input.color(color.orange, 'EMA 20 Color', group='EMA 20 Style')
+dot_width_20  = input.int(6, 'EMA 20 Dotted Line Width', minval=1, maxval=20, group='EMA 20 Style')
+
+// Style Settings - EMA 200
+ema200_color  = input.color(#B210FD, 'EMA 200 Color', group='EMA 200 Style')
+dot_width_200 = input.int(6, 'EMA 200 Dotted Line Width', minval=1, maxval=20, group='EMA 200 Style')
+
+// ———————— Calculations ————————
+ema20  = ta.ema(close, ema20_len)
+ema200 = ta.ema(close, ema200_len)
+
+// ———————— Curve Plots ————————
+plot(show_ema20_curve ? ema20 : na, 'EMA 20 Curve', color=ema20_color, linewidth=10)
+plot(show_ema200_curve ? ema200 : na, 'EMA 200 Curve', color=ema200_color, linewidth=6)
+
+// ———————— Dotted Horizontal Track Lines ————————
+var line line_ema20  = na
+var line line_ema200 = na
+
+if barstate.islast
+    // Update EMA 20 dotted horizontal track line
+    line.delete(line_ema20)
+    if show_ema20_dots
+        line_ema20 := line.new(bar_index - 1, ema20, bar_index, ema20, extend=extend.both, style=line.style_dotted, color=ema20_color, width=dot_width_20)
+
+    // Update EMA 200 dotted horizontal track line
+    line.delete(line_ema200)
+    if show_ema200_dots
+        line_ema200 := line.new(bar_index - 1, ema200, bar_index, ema200, extend=extend.both, style=line.style_dotted, color=ema200_color, width=dot_width_200)
+// new indicator: order Blocks Finder [TradingFinder] Major OB + Supply and Demand Zones
+// (Demand = blue, Supply = red, both drawn the same way)
+// ─── INPUTS ───────────────────────────────────────────────────────────────────
+OBRefine__ = input.string('On', 'Order Block Refine', ['On', 'Off'], group = 'Order Block Setting')
+RefineType__ = input.string('Defensive', 'Refine Type', ['Defensive', 'Aggressive'], group = 'Order Block Setting')
+OBLineWidth__ = input.int(5, 'Order Block Line Width', minval = 1, maxval = 10, group = 'Order Block Setting')
+
+
+// ─── CANDLE BASICS ────────────────────────────────────────────────────────────
+Candle_Range__ = high - low
+Candle_Body__ = close - open
+
+
+// ─── CANDLE BREAK DETECTOR ───────────────────────────────────────────────────
+var string Candle_Break__ = ''
+if close > high[1]
+    Candle_Break__ := 'Candle Bull Break'
+else if close < low[1]
+    Candle_Break__ := 'Candle Bear Break'
+
+
+// ─── BAR INDICES FOR BULL / BEAR BREAKS ──────────────────────────────────────
+bar_index_bull__ = ta.valuewhen(close > high[1], bar_index, 0)
+bar_index_bear__ = ta.valuewhen(close < low[1], bar_index, 0)
+
+
+var int start_bar_index_high__ = 0
+var int start_bar_index_low__ = 0
+
+
+// ─── DYNAMIC LOOKBACK LENGTHS ────────────────────────────────────────────────
+lenHighest__ = bar_index - bar_index_bear__ + 5
+lenLowest__ = bar_index - bar_index_bull__ + 5
+
+
+lenHighest1__ = bar_index - bar_index_bear__ + 3
+lenLowest1__ = bar_index - bar_index_bull__ + 3
+
+
+HighestLen__ = na(lenHighest__) ? 1 : lenHighest__
+LowestLen__ = na(lenLowest__) ? 1 : lenLowest__
+HighestLen1__ = na(lenHighest1__) ? 1 : lenHighest1__
+LowestLen1__ = na(lenLowest1__) ? 1 : lenLowest1__
+
+
+// ─── HIGH / LOW DETECTORS ────────────────────────────────────────────────────
+High_first__ = ta.highest(high, HighestLen__)
+Low_first__ = ta.lowest(low, LowestLen__)
+High_first1__ = ta.highest(high, HighestLen1__)
+Low_first1__ = ta.lowest(low, LowestLen1__)
+
+
+// ─── CORRECTED HIGH / LOW ────────────────────────────────────────────────────
+var float High_Correct__ = 0.0
+var float Low_Correct__ = 0.0
+
+is_high_pivot = Candle_Break__ == 'Candle Bear Break' and Candle_Break__[1] == 'Candle Bull Break'
+if is_high_pivot
+    start_bar_index_high__ := bar_index
+
+High_sec__ = is_high_pivot ? (High_Correct__[1] == High_first__ ? High_first1__ : High_first__) : na
+
+is_low_pivot = Candle_Break__ == 'Candle Bull Break' and Candle_Break__[1] == 'Candle Bear Break'
+if is_low_pivot
+    start_bar_index_low__ := bar_index
+
+Low_sec__ = is_low_pivot ? (Low_Correct__[1] == Low_first__ ? Low_first1__ : Low_first__) : na
+
+if not na(High_sec__)
+    High_Correct__ := High_sec__
+
+if not na(Low_sec__)
+    Low_Correct__ := Low_sec__
+
+
+// ─── MAJOR HIGH / LOW (filtered) ─────────────────────────────────────────────
+var int bar_index_bull_BoS__ = 0
+var int bar_index_bear_BoS__ = 0
+var string BoS__ = 'Hi'
+var float High_Correct_f__ = 0.0
+var float Low_Correct_f__ = 0.0
+
+
+if (na(High_Correct_f__) or High_Correct_f__ == 0) and not na(High_Correct__) and High_Correct__ != 0
+    High_Correct_f__ := High_Correct__
+else if not na(High_Correct__) and High_Correct__ > nz(High_Correct_f__[1]) and High_Correct__ != 0
+    High_Correct_f__ := High_Correct__
+else if not na(High_Correct__) and High_Correct__ < nz(High_Correct_f__[1]) and BoS__ == 'Bear BoS' and bar_index_bear_BoS__ >= start_bar_index_high__
+    High_Correct_f__ := High_Correct__
+else
+    High_Correct_f__ := High_Correct_f__[1]
+
+
+if (na(Low_Correct_f__) or Low_Correct_f__ == 0) and not na(Low_Correct__) and Low_Correct__ != 0
+    Low_Correct_f__ := Low_Correct__
+else if not na(Low_Correct__) and Low_Correct__ < nz(Low_Correct_f__[1], 1e9) and Low_Correct__ != 0
+    Low_Correct_f__ := Low_Correct__
+else if not na(Low_Correct__) and Low_Correct__ > nz(Low_Correct_f__[1]) and BoS__ == 'Bull BoS' and bar_index_bull_BoS__ >= start_bar_index_low__
+    Low_Correct_f__ := Low_Correct__
+else
+    Low_Correct_f__ := Low_Correct_f__[1]
+
+
+// ─── BREAK OF STRUCTURE ───────────────────────────────────────────────────────
+if nz(High_Correct_f__) > 0 and close > High_Correct_f__ and close[1] <= High_Correct_f__
+    BoS__ := 'Bull BoS'
+    bar_index_bull_BoS__ := bar_index
+else if nz(Low_Correct_f__) > 0 and close < Low_Correct_f__ and close[1] >= Low_Correct_f__
+    BoS__ := 'Bear BoS'
+    bar_index_bear_BoS__ := bar_index
+else
+    BoS__ := '0'
+
+
+// ─── ORDER BLOCK BAR INDEX + CONDITIONS ──────────────────────────────────────
+bar_index_Demand_OB__ = ta.valuewhen(Low_Correct__ != Low_Correct__[1], bar_index[1], 0)
+bar_index_Supply_OB__ = ta.valuewhen(High_Correct__ != High_Correct__[1], bar_index[1], 0)
+
+
+var int DemandCheck__ = 0
+var int SupplyCheck__ = 0
+
+
+Demand_OB_Condition__ = (BoS__ == 'Bull BoS' and bar_index_bull_BoS__[1] > bar_index_bear_BoS__ or BoS__ == 'Bull BoS' and bar_index_bull_BoS__ > bar_index_bear_BoS__) and DemandCheck__ != bar_index_Demand_OB__
+Supply_OB_Condition__ = (BoS__ == 'Bear BoS' and bar_index_bear_BoS__[1] > bar_index_bull_BoS__ or BoS__ == 'Bear BoS' and bar_index_bear_BoS__ > bar_index_bull_BoS__) and SupplyCheck__ != bar_index_Supply_OB__
+
+
+// ─── ATR ──────────────────────────────────────────────────────────────────────
+ATR__ = ta.atr(55)
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// DEMAND SIDE
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ─── DEMAND CANDLE RANGES (around OB candle) ─────────────────────────────────
+var float DCRa1__ = 0.0
+var float DCRO__ = 0.0
+
+
+if bar_index >= bar_index_Demand_OB__ + 1
+    DCRa1__ := Candle_Range__[bar_index - bar_index_Demand_OB__ + 1]
+    DCRO__ := Candle_Range__[bar_index - bar_index_Demand_OB__]
+    DCRO__
+
+
+// ─── DEMAND MIN / MAX OHLC (window around OB) ────────────────────────────────
+var float DminOpen__ = 0.0
+var float DminHigh__ = 0.0
+var float DminLow__ = 0.0
+var float DminClose__ = 0.0
+var float DmaxOpen__ = 0.0
+var float DmaxHigh__ = 0.0
+var float DmaxLow__ = 0.0
+var float DmaxClose__ = 0.0
+
+
+if bar_index > bar_index_Demand_OB__ + 1
+    DminOpen__ := math.min(open[bar_index - bar_index_Demand_OB__ - 2], open[bar_index - bar_index_Demand_OB__ + 1], open[bar_index - bar_index_Demand_OB__], open[bar_index - bar_index_Demand_OB__ - 1])
+    DminHigh__ := math.min(high[bar_index - bar_index_Demand_OB__ - 2], high[bar_index - bar_index_Demand_OB__ + 1], high[bar_index - bar_index_Demand_OB__], high[bar_index - bar_index_Demand_OB__ - 1])
+    DminLow__ := math.min(low[bar_index - bar_index_Demand_OB__ - 2], low[bar_index - bar_index_Demand_OB__ + 1], low[bar_index - bar_index_Demand_OB__], low[bar_index - bar_index_Demand_OB__ - 1])
+    DminClose__ := math.min(close[bar_index - bar_index_Demand_OB__ - 2], close[bar_index - bar_index_Demand_OB__ + 1], close[bar_index - bar_index_Demand_OB__], close[bar_index - bar_index_Demand_OB__ - 1])
+    DmaxOpen__ := math.max(open[bar_index - bar_index_Demand_OB__ - 2], open[bar_index - bar_index_Demand_OB__ + 1], open[bar_index - bar_index_Demand_OB__], open[bar_index - bar_index_Demand_OB__ - 1])
+    DmaxHigh__ := math.max(high[bar_index - bar_index_Demand_OB__ - 2], high[bar_index - bar_index_Demand_OB__ + 1], high[bar_index - bar_index_Demand_OB__], high[bar_index - bar_index_Demand_OB__ - 1])
+    DmaxLow__ := math.max(low[bar_index - bar_index_Demand_OB__ - 2], low[bar_index - bar_index_Demand_OB__ + 1], low[bar_index - bar_index_Demand_OB__], low[bar_index - bar_index_Demand_OB__ - 1])
+    DmaxClose__ := math.max(close[bar_index - bar_index_Demand_OB__ - 2], close[bar_index - bar_index_Demand_OB__ + 1], close[bar_index - bar_index_Demand_OB__], close[bar_index - bar_index_Demand_OB__ - 1])
+    DmaxClose__
+else if bar_index >= bar_index_Demand_OB__
+    DminOpen__ := math.min(open[bar_index - bar_index_Demand_OB__ + 1], open[bar_index - bar_index_Demand_OB__], open[bar_index - bar_index_Demand_OB__ - 1])
+    DminHigh__ := math.min(high[bar_index - bar_index_Demand_OB__ + 1], high[bar_index - bar_index_Demand_OB__], high[bar_index - bar_index_Demand_OB__ - 1])
+    DminLow__ := math.min(low[bar_index - bar_index_Demand_OB__ + 1], low[bar_index - bar_index_Demand_OB__], low[bar_index - bar_index_Demand_OB__ - 1])
+    DminClose__ := math.min(close[bar_index - bar_index_Demand_OB__ + 1], close[bar_index - bar_index_Demand_OB__], close[bar_index - bar_index_Demand_OB__ - 1])
+    DmaxOpen__ := math.max(open[bar_index - bar_index_Demand_OB__ + 1], open[bar_index - bar_index_Demand_OB__], open[bar_index - bar_index_Demand_OB__ - 1])
+    DmaxHigh__ := math.max(high[bar_index - bar_index_Demand_OB__ + 1], high[bar_index - bar_index_Demand_OB__], high[bar_index - bar_index_Demand_OB__ - 1])
+    DmaxLow__ := math.max(low[bar_index - bar_index_Demand_OB__ + 1], low[bar_index - bar_index_Demand_OB__], low[bar_index - bar_index_Demand_OB__ - 1])
+    DmaxClose__ := math.max(close[bar_index - bar_index_Demand_OB__ + 1], close[bar_index - bar_index_Demand_OB__], close[bar_index - bar_index_Demand_OB__ - 1])
+    DmaxClose__
+
+
+// ─── DEMAND OB REFINER (Aggressive levels) ───────────────────────────────────
+var float DDA__ = 0.0 // Demand Distal  Aggressive
+var float DPA__ = 0.0 // Demand Proximal Aggressive
+
+
+if DCRO__ <= ATR__ * 0.5
+    DPA__ := high[bar_index - bar_index_Demand_OB__]
+    DDA__ := DminLow__
+    DDA__
+else if DCRO__ > ATR__ * 0.5 and DCRO__ <= ATR__
+    DPA__ := Candle_Body__ >= 0 ? close[bar_index - bar_index_Demand_OB__] : open[bar_index - bar_index_Demand_OB__]
+    DDA__ := DminLow__
+    DDA__
+else if DCRO__ > ATR__
+    if low[bar_index - bar_index_Demand_OB__ + 1] < high[bar_index - bar_index_Demand_OB__]
+        if low[bar_index - bar_index_Demand_OB__ + 1] > low[bar_index - bar_index_Demand_OB__]
+            DPA__ := low[bar_index - bar_index_Demand_OB__ + 1]
+            DDA__ := low[bar_index - bar_index_Demand_OB__]
+            DDA__
+        else
+            if Candle_Body__[bar_index - bar_index_Demand_OB__ + 1] >= 0
+                DPA__ := DCRa1__ > ATR__ ? DmaxOpen__ : DmaxClose__
+                DDA__ := DminLow__
+                DDA__
+            else
+                DPA__ := DmaxOpen__
+                DDA__ := DminLow__
+                DDA__
+    else
+        if DminLow__ - DminOpen__ > DminLow__ - DminClose__ and DminLow__ - DminOpen__ <= ATR__ and DminLow__ - DminOpen__ >= ATR__ * 0.5
+            DPA__ := DminOpen__
+            DDA__ := DminLow__
+            DDA__
+        else if DminLow__ - DminOpen__ < DminLow__ - DminClose__ and DminLow__ - DminClose__ <= ATR__ and DminLow__ - DminClose__ >= ATR__ * 0.5
+            DPA__ := DminClose__
+            DDA__ := DminLow__
+            DDA__
+else
+    DPA__ := Candle_Body__ > 0 ? DmaxHigh__ : DmaxHigh__
+    DDA__ := Candle_Body__ > 0 ? DminLow__ : DmaxLow__
+    DDA__
+
+
+// ─── DEMAND DEFENSIVE SHRINK ─────────────────────────────────────────────────
+var float DProximal__ = 0.0
+var float DDistal__ = 0.0
+if RefineType__ == 'Defensive'
+    float ratio__ = DPA__ - DDA__ >= ATR__ * 3 ? 0.7 : DPA__ - DDA__ >= ATR__ * 2 ? 0.6 : DPA__ - DDA__ >= ATR__ * 1.6 ? 0.5 : DPA__ - DDA__ > ATR__ ? 0.25 : 0.0
+    DDistal__ := DDA__
+    DProximal__ := ratio__ == 0.0 ? DPA__ : DPA__ - (DPA__ - DDA__) * ratio__
+    DProximal__
+else
+    DDistal__ := DDA__
+    DProximal__ := DPA__
+    DProximal__
+
+
+// ─── DEMAND ZONE COORDINATES ─────────────────────────────────────────────────
+var float YDp12__ = 0.0 // proximal price
+var float YDd12__ = 0.0 // distal  price
+var int XDp1__ = 0
+var int XDd1__ = 0
+var int XDp2__ = 0
+
+
+if Demand_OB_Condition__
+    DemandCheck__ := bar_index_Demand_OB__
+    YDp12__ := OBRefine__ == 'On' ? DProximal__ : high[bar_index - bar_index_Demand_OB__]
+    YDd12__ := OBRefine__ == 'On' ? DDistal__ : low[bar_index - bar_index_Demand_OB__]
+    XDp1__ := bar_index_Demand_OB__
+    XDd1__ := bar_index_Demand_OB__
+    XDp2__ := bar_index_Demand_OB__ + 1
+    XDp2__
+
+
+// ─── DEMAND OB DRAWING (blue) ────────────────────────────────────────────────
+var bool DemCheck__ = true
+var int DemCounter__ = 1
+var line Distal__ = na
+var line Proximal__ = na
+var line DLine50per__ = na
+var box demBox__ = na
+
+
+if Demand_OB_Condition__
+    Distal__ := line.new(XDd1__, YDd12__, XDp2__, YDd12__, color = #2962FF, style = line.style_solid, width = OBLineWidth__)
+    Proximal__ := line.new(XDp1__, YDp12__, XDp2__, YDp12__, color = #2962FF, style = line.style_solid, width = OBLineWidth__)
+    DLine50per__ := line.new(XDp1__, (YDp12__ + YDd12__) / 2, XDp2__, (YDp12__ + YDd12__) / 2, color = #2962FF, style = line.style_dotted, width = OBLineWidth__)
+    demBox__ := box.new(XDp1__, math.max(YDp12__, YDd12__), XDp2__, math.min(YDp12__, YDd12__), bgcolor = color.new(#2962FF, 85), border_color = color.new(#2962FF, 100), border_width = 0, text = '', text_size = size.small, text_color = color.white, text_halign = text.align_right)
+    DemCounter__ := 1
+    DemCheck__ := true
+    DemCheck__
+
+
+if (low > YDd12__ or XDd1__ == YDp12__[1]) and DemCheck__ == true and not na(Distal__)
+    DemCounter__ := DemCounter__ + 1
+    line.set_x2(Distal__, bar_index + 1)
+    line.set_x2(Proximal__, bar_index + 1)
+    line.set_x2(DLine50per__, bar_index + 1)
+    if not na(demBox__)
+        box.set_right(demBox__, bar_index + 1)
+
+
+if low < YDd12__ and low[1] > YDd12__
+    DemCheck__ := false
+    DemCheck__
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SUPPLY SIDE (refiner logic taken from the original TradingFinder script)
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ─── SUPPLY CANDLE RANGES (around OB candle) ─────────────────────────────────
+var float SCRa1__ = 0.0
+var float SCRO__ = 0.0
+
+
+// (same as the original indicator: computed on every bar)
+SCRa1__ := high[bar_index - bar_index_Supply_OB__ + 1] - low[bar_index - bar_index_Supply_OB__ + 1]
+SCRO__ := high[bar_index - bar_index_Supply_OB__] - low[bar_index - bar_index_Supply_OB__]
+
+
+// ─── SUPPLY MIN / MAX OHLC (window around OB) ────────────────────────────────
+var float SminOpen__ = 0.0
+var float SminHigh__ = 0.0
+var float SminLow__ = 0.0
+var float SminClose__ = 0.0
+var float SmaxOpen__ = 0.0
+var float SmaxHigh__ = 0.0
+var float SmaxLow__ = 0.0
+var float SmaxClose__ = 0.0
+
+
+if bar_index > bar_index_Supply_OB__ + 1
+    SminOpen__ := math.min(open[bar_index - bar_index_Supply_OB__ - 2], open[bar_index - bar_index_Supply_OB__ + 1], open[bar_index - bar_index_Supply_OB__], open[bar_index - bar_index_Supply_OB__ - 1])
+    SminHigh__ := math.min(high[bar_index - bar_index_Supply_OB__ - 2], high[bar_index - bar_index_Supply_OB__ + 1], high[bar_index - bar_index_Supply_OB__], high[bar_index - bar_index_Supply_OB__ - 1])
+    SminLow__ := math.min(low[bar_index - bar_index_Supply_OB__ - 2], low[bar_index - bar_index_Supply_OB__ + 1], low[bar_index - bar_index_Supply_OB__], low[bar_index - bar_index_Supply_OB__ - 1])
+    SminClose__ := math.min(close[bar_index - bar_index_Supply_OB__ - 2], close[bar_index - bar_index_Supply_OB__ + 1], close[bar_index - bar_index_Supply_OB__], close[bar_index - bar_index_Supply_OB__ - 1])
+    SmaxOpen__ := math.max(open[bar_index - bar_index_Supply_OB__ - 2], open[bar_index - bar_index_Supply_OB__ + 1], open[bar_index - bar_index_Supply_OB__], open[bar_index - bar_index_Supply_OB__ - 1])
+    SmaxHigh__ := math.max(high[bar_index - bar_index_Supply_OB__ - 2], high[bar_index - bar_index_Supply_OB__ + 1], high[bar_index - bar_index_Supply_OB__], high[bar_index - bar_index_Supply_OB__ - 1])
+    SmaxLow__ := math.max(low[bar_index - bar_index_Supply_OB__ - 2], low[bar_index - bar_index_Supply_OB__ + 1], low[bar_index - bar_index_Supply_OB__], low[bar_index - bar_index_Supply_OB__ - 1])
+    SmaxClose__ := math.max(close[bar_index - bar_index_Supply_OB__ - 2], close[bar_index - bar_index_Supply_OB__ + 1], close[bar_index - bar_index_Supply_OB__], close[bar_index - bar_index_Supply_OB__ - 1])
+    SmaxClose__
+else if bar_index >= bar_index_Supply_OB__
+    SminOpen__ := math.min(open[bar_index - bar_index_Supply_OB__ + 1], open[bar_index - bar_index_Supply_OB__], open[bar_index - bar_index_Supply_OB__ - 1])
+    SminHigh__ := math.min(high[bar_index - bar_index_Supply_OB__ + 1], high[bar_index - bar_index_Supply_OB__], high[bar_index - bar_index_Supply_OB__ - 1])
+    SminLow__ := math.min(low[bar_index - bar_index_Supply_OB__ + 1], low[bar_index - bar_index_Supply_OB__], low[bar_index - bar_index_Supply_OB__ - 1])
+    SminClose__ := math.min(close[bar_index - bar_index_Supply_OB__ + 1], close[bar_index - bar_index_Supply_OB__], close[bar_index - bar_index_Supply_OB__ - 1])
+    SmaxOpen__ := math.max(open[bar_index - bar_index_Supply_OB__ + 1], open[bar_index - bar_index_Supply_OB__], open[bar_index - bar_index_Supply_OB__ - 1])
+    SmaxHigh__ := math.max(high[bar_index - bar_index_Supply_OB__ + 1], high[bar_index - bar_index_Supply_OB__], high[bar_index - bar_index_Supply_OB__ - 1])
+    SmaxLow__ := math.max(low[bar_index - bar_index_Supply_OB__ + 1], low[bar_index - bar_index_Supply_OB__], low[bar_index - bar_index_Supply_OB__ - 1])
+    SmaxClose__ := math.max(close[bar_index - bar_index_Supply_OB__ + 1], close[bar_index - bar_index_Supply_OB__], close[bar_index - bar_index_Supply_OB__ - 1])
+    SmaxClose__
+
+
+// ─── SUPPLY OB REFINER (Aggressive levels) ───────────────────────────────────
+// Supply distal = TOP of the zone, supply proximal = BOTTOM of the zone
+var float SDA__ = 0.0 // Supply Distal  Aggressive
+var float SPA__ = 0.0 // Supply Proximal Aggressive
+
+
+if SCRO__ <= ATR__ * 0.5
+    SPA__ := low[bar_index - bar_index_Supply_OB__]
+    SDA__ := SmaxHigh__
+    SDA__
+else if SCRO__ > ATR__ * 0.5 and SCRO__ <= ATR__
+    SPA__ := Candle_Body__ >= 0 ? close[bar_index - bar_index_Supply_OB__] : open[bar_index - bar_index_Supply_OB__]
+    SDA__ := SmaxHigh__
+    SDA__
+else if SCRO__ > ATR__
+    if high[bar_index - bar_index_Supply_OB__ + 1] > low[bar_index - bar_index_Supply_OB__]
+        if high[bar_index - bar_index_Supply_OB__ + 1] > high[bar_index - bar_index_Supply_OB__]
+            SPA__ := high[bar_index - bar_index_Supply_OB__ + 1]
+            SDA__ := high[bar_index - bar_index_Supply_OB__]
+            SDA__
+        else if high[bar_index - bar_index_Supply_OB__ + 1] <= high[bar_index - bar_index_Supply_OB__]
+            if Candle_Body__[bar_index - bar_index_Supply_OB__ + 1] > 0 or Candle_Body__[bar_index - bar_index_Supply_OB__ + 1] == 0
+                if SCRa1__ > ATR__
+                    SPA__ := SminClose__
+                    SDA__ := SmaxHigh__
+                    SDA__
+                else if SCRa1__ < ATR__
+                    SPA__ := SminOpen__
+                    SDA__ := SmaxHigh__
+                    SDA__
+            else if Candle_Body__[bar_index - bar_index_Supply_OB__ + 1] < 0
+                if SCRa1__ > ATR__
+                    SPA__ := SminOpen__
+                    SDA__ := SmaxHigh__
+                    SDA__
+                else if SCRa1__ < ATR__
+                    SPA__ := SmaxHigh__
+                    SDA__ := high[bar_index - bar_index_Supply_OB__ + 1]
+                    SDA__
+    else if not(high[bar_index - bar_index_Supply_OB__ + 1] > low[bar_index - bar_index_Supply_OB__])
+        if SmaxHigh__ - SminOpen__ > SmaxHigh__ - SminClose__ and SmaxHigh__ - SminOpen__ <= ATR__ and SmaxHigh__ - SminOpen__ >= ATR__ * 0.5
+            SPA__ := SminOpen__
+            SDA__ := SmaxHigh__
+            SDA__
+        else if SmaxHigh__ - SminOpen__ < SmaxHigh__ - SminClose__ and SmaxHigh__ - SminClose__ <= ATR__ and SmaxHigh__ - SminClose__ >= ATR__ * 0.5
+            SPA__ := SminClose__
+            SDA__ := SmaxHigh__
+            SDA__
+else
+    SPA__ := SminLow__
+    SDA__ := SmaxHigh__
+    SDA__
+
+
+// ─── SUPPLY DEFENSIVE SHRINK ─────────────────────────────────────────────────
+var float SProximal__ = 0.0
+var float SDistal__ = 0.0
+if RefineType__ == 'Defensive'
+    float sratio__ = SDA__ - SPA__ >= ATR__ * 3 ? 0.7 : SDA__ - SPA__ >= ATR__ * 2 ? 0.6 : SDA__ - SPA__ >= ATR__ * 1.6 ? 0.5 : SDA__ - SPA__ > ATR__ ? 0.25 : 0.0
+    SDistal__ := SDA__
+    SProximal__ := sratio__ == 0.0 ? SPA__ : SPA__ + (SDA__ - SPA__) * sratio__
+    SProximal__
+else
+    SDistal__ := SDA__
+    SProximal__ := SPA__
+    SProximal__
+
+
+// ─── SUPPLY ZONE COORDINATES ─────────────────────────────────────────────────
+var float YSp12__ = 0.0 // proximal price (bottom)
+var float YSd12__ = 0.0 // distal  price (top)
+var int XSp1__ = 0
+var int XSd1__ = 0
+var int XSp2__ = 0
+
+
+if Supply_OB_Condition__
+    SupplyCheck__ := bar_index_Supply_OB__
+    YSp12__ := OBRefine__ == 'On' ? SProximal__ : low[bar_index - bar_index_Supply_OB__]
+    YSd12__ := OBRefine__ == 'On' ? SDistal__ : high[bar_index - bar_index_Supply_OB__]
+    XSp1__ := bar_index_Supply_OB__
+    XSd1__ := bar_index_Supply_OB__
+    XSp2__ := bar_index_Supply_OB__ + 1
+    XSp2__
+
+
+// ─── SUPPLY OB DRAWING (red) ─────────────────────────────────────────────────
+var bool SupCheck__ = true
+var int SupCounter__ = 1
+var line SLineDistal__ = na
+var line SLineProximal__ = na
+var line SLine50per__ = na
+var box supBox__ = na
+
+
+if Supply_OB_Condition__
+    SLineDistal__ := line.new(XSd1__, YSd12__, XSp2__, YSd12__, color = #FF1744, style = line.style_solid, width = OBLineWidth__)
+    SLineProximal__ := line.new(XSp1__, YSp12__, XSp2__, YSp12__, color = #FF1744, style = line.style_solid, width = OBLineWidth__)
+    SLine50per__ := line.new(XSp1__, (YSp12__ + YSd12__) / 2, XSp2__, (YSp12__ + YSd12__) / 2, color = #FF1744, style = line.style_dotted, width = OBLineWidth__)
+    supBox__ := box.new(XSp1__, math.max(YSd12__, YSp12__), XSp2__, math.min(YSd12__, YSp12__), bgcolor = color.new(#FF1744, 88), border_color = color.new(#FF1744, 100), border_width = 0, text = '', text_size = size.small, text_color = color.white, text_halign = text.align_right)
+    SupCounter__ := 1
+    SupCheck__ := true
+    SupCheck__
+
+
+if (high < YSp12__ or XSd1__ == YSp12__[1]) and SupCheck__ == true and not na(SLineDistal__)
+    SupCounter__ := SupCounter__ + 1
+    line.set_x2(SLineDistal__, bar_index + 1)
+    line.set_x2(SLineProximal__, bar_index + 1)
+    line.set_x2(SLine50per__, bar_index + 1)
+    if not na(supBox__)
+        box.set_right(supBox__, bar_index + 1)
+
+
+if high > YSd12__ and high[1] < YSd12__
+    SupCheck__ := false
+    SupCheck__
+
+
+// ─── DATA WINDOW OUTPUTS ─────────────────────────────────────────────────────
+plot(YDd12__, title = 'Distal_Value', color = color.rgb(41, 98, 255), linewidth = 1, style = plot.style_line, display = display.data_window)
+plot(year(time[math.max(0, bar_index - XDd1__)]) * 10000 + month(time[math.max(0, bar_index - XDd1__)]) * 100 + dayofmonth(time[math.max(0, bar_index - XDd1__)]), title = 'Distal_StartDate', display = display.data_window)
+
+plot(YSd12__, title = 'Supply_Distal_Value', color = color.rgb(255, 23, 68), linewidth = 1, style = plot.style_line, display = display.data_window)
+plot(year(time[math.max(0, bar_index - XSd1__)]) * 10000 + month(time[math.max(0, bar_index - XSd1__)]) * 100 + dayofmonth(time[math.max(0, bar_index - XSd1__)]), title = 'Supply_Distal_StartDate', display = display.data_window)
+
+plot(YDd12__ > 0 and DemCheck__ ? YDd12__ : na, title = 'TradingFinder Demand', color = #2962FF, linewidth = 2, style = plot.style_linebr, display = display.data_window)
+plot(YSd12__ > 0 and SupCheck__ ? YSd12__ : na, title = 'TradingFinder Supply', color = #FF1744, linewidth = 2, style = plot.style_linebr, display = display.data_window)
+
+
+// new indicator: trend magic: KIVANCOZBILGIC
+// period_trend_magic_kivan = input(20, 'CCI period')
+// coeff_trend_magic_kivan = input(1, 'ATR Multiplier')
+// AP_trend_magic_kivan = input(5, 'ATR Period')
+// ATR_trend_magic_kivan = ta.sma(ta.tr, AP_trend_magic_kivan)
+// src_trend_magic_kivan = input(close)
+// upT_trend_magic_kivan = low - ATR_trend_magic_kivan * coeff_trend_magic_kivan
+// downT_trend_magic_kivan = high + ATR_trend_magic_kivan * coeff_trend_magic_kivan
+// MagicTrend_trend_magic_kivan = 0.0
+// MagicTrend_trend_magic_kivan := ta.cci(src_trend_magic_kivan, period_trend_magic_kivan) >= 0 ? upT_trend_magic_kivan < nz(MagicTrend_trend_magic_kivan[1]) ? nz(MagicTrend_trend_magic_kivan[1]) : upT_trend_magic_kivan : downT_trend_magic_kivan > nz(MagicTrend_trend_magic_kivan[1]) ? nz(MagicTrend_trend_magic_kivan[1]) : downT_trend_magic_kivan
+// color1_trend_magic_kivan = ta.cci(src_trend_magic_kivan, period_trend_magic_kivan) >= 0 ? #0097A7 : #801922
+// plot(MagicTrend_trend_magic_kivan, color = color1_trend_magic_kivan, linewidth = 10)
+
+// NEW indicator: VPVR : Fr3d0's Volume Profile Visible Range
+
+LINE_COLOR_VPVR = color.rgb(255, 97, 255)
+
+POC_LINE_COLOR_VPVR = color.rgb(255, 97, 255)
+
+VALUE_AREA_LINE_COLOR_VPVR = color.rgb(255, 97, 255, 34)
+
+BUY_COLOR_VPVR = color.new(color.green, 50)
+
+SELL_COLOR_VPVR = color.new(color.red, 50)
+
+MAX_BARS_VPVR = 365
+
+
+
+topBottomLineColor_VPVR = input.color(LINE_COLOR_VPVR, "Top/bottom Line Color")
+
+pocLineColor_VPVR = input.color(POC_LINE_COLOR_VPVR, "Point of Control Line Color")
+
+valueAreaLineColor_VPVR = input.color(VALUE_AREA_LINE_COLOR_VPVR, "Value Area Line Color")
+
+buyBarColor_VPVR = input.color(BUY_COLOR_VPVR, "Buy Bar Color")
+
+sellBarColor_VPVR = input.color(SELL_COLOR_VPVR, "Sell Bar Color")
+
+numOfBars_VPVR = input.int(50, 'Number of bars', minval=21, maxval=MAX_BARS_VPVR)
+
+distLastCandle_VPVR = input.int(2, 'Distance from last candle', minval=1, maxval=MAX_BARS_VPVR)
+
+numOfProfiles_VPVR = input.int(3, 'Number of profiles', minval=1, maxval=10)
+
+numOfHists_VPVR = input.int(50, 'Number of hists', minval=20, maxval=100)
+
+
+
+// Clean up drawings every tick
+
+MAX_BOXES_LIMIT_VPVR = 500
+
+MAX_BOXES_VPVR = numOfProfiles_VPVR * numOfHists_VPVR
+
+expectedBoxes_VPVR = MAX_BOXES_VPVR * 2
+
+
+
+var buyBars_VPVR = array.new_box(MAX_BOXES_VPVR, na)
+
+for i_VPVR=0 to MAX_BOXES_VPVR-1
+
+    box.delete(array.get(buyBars_VPVR, i_VPVR))
+
+
+
+var sellBars_VPVR = array.new_box(MAX_BOXES_VPVR, na)
+
+for i_VPVR=0 to MAX_BOXES_VPVR-1
+
+    box.delete(array.get(sellBars_VPVR, i_VPVR))
+
+
+
+var topLines_VPVR = array.new_line(numOfProfiles_VPVR)
+
+var bottomLines_VPVR = array.new_line(numOfProfiles_VPVR)
+
+var pocLines_VPVR = array.new_line(numOfProfiles_VPVR)
+
+var vahLines_VPVR = array.new_line(numOfProfiles_VPVR)
+
+var valLines_VPVR = array.new_line(numOfProfiles_VPVR)
+
+for i_VPVR=0 to numOfProfiles_VPVR - 1
+
+    line.delete(array.get(topLines_VPVR, i_VPVR))
+
+    line.delete(array.get(bottomLines_VPVR, i_VPVR))
+
+    line.delete(array.get(pocLines_VPVR, i_VPVR))
+
+    line.delete(array.get(vahLines_VPVR, i_VPVR))
+
+    line.delete(array.get(valLines_VPVR, i_VPVR))
+
+
+
+var label boxWarning_VPVR = na
+
+
+
+if barstate.islast
+
+    if expectedBoxes_VPVR > MAX_BOXES_LIMIT_VPVR
+
+        label.delete(boxWarning_VPVR)
+
+        boxWarning_VPVR := label.new(
+
+            x=bar_index,
+
+            y=high,
+
+            text="⚠ VPVR WARNING\nBoxes requested: " + str.tostring(expectedBoxes_VPVR) +
+
+                 "\nMax allowed: " + str.tostring(MAX_BOXES_LIMIT_VPVR),
+
+            style=label.style_label_down,
+
+            color=color.new(color.red, 0),
+
+            textcolor=color.white,
+
+            size=size.small
+
+        )
+
+    else
+
+        label.delete(boxWarning_VPVR)
+
+   
+
+    for k_VPVR = 0 to numOfProfiles_VPVR - 1
+
+        offset_VPVR = k_VPVR * (numOfBars_VPVR - 1)
+
+        lastBar_VPVR = bar_index - distLastCandle_VPVR - offset_VPVR
+
+        firstBar_VPVR = lastBar_VPVR - numOfBars_VPVR + 1
+
+        visibleBars_VPVR = lastBar_VPVR - firstBar_VPVR + 1
+
+        widestHistWidth_VPVR = visibleBars_VPVR
+
+
+
+        histLowList_VPVR = array.new_float(numOfHists_VPVR, na)
+
+        histHighList_VPVR = array.new_float(numOfHists_VPVR, na)
+
+        histPriceList_VPVR = array.new_float(numOfHists_VPVR, 0.0)
+
+
+
+        histBuyVolumeList_VPVR = array.new_float(numOfHists_VPVR, 0.0)
+
+        histSellVolumeList_VPVR = array.new_float(numOfHists_VPVR, 0.0)
+
+        histVolumePercentageList_VPVR = array.new_float(numOfHists_VPVR, 0.0)
+
+
+
+        totalVolume_VPVR = 0.0
+
+        volumeAccum_VPVR = 0.0
+
+        float VAH_VPVR = na
+
+        float VAL_VPVR = na
+
+        float rangeHigh_VPVR = na
+
+        float rangeLow_VPVR = na
+
+        float rangeHeight_VPVR = na
+
+        float histHeight_VPVR = na
+
+
+
+        // Define range height
+
+        rangeHigh_VPVR := high[offset_VPVR + distLastCandle_VPVR]
+
+        rangeLow_VPVR  := low[offset_VPVR + distLastCandle_VPVR]
+
+        for _i_VPVR = 1 to numOfBars_VPVR - 1
+
+            i_VPVR = offset_VPVR + distLastCandle_VPVR + _i_VPVR
+
+            rangeHigh_VPVR := math.max(rangeHigh_VPVR, high[i_VPVR])
+
+            rangeLow_VPVR  := math.min(rangeLow_VPVR, low[i_VPVR])
+
+        rangeHeight_VPVR := rangeHigh_VPVR - rangeLow_VPVR
+
+        histHeight_VPVR := rangeHeight_VPVR / numOfHists_VPVR
+
+
+
+        // Draw top and bottom of the range considered
+
+        array.set(topLines_VPVR, k_VPVR, line.new(firstBar_VPVR, rangeHigh_VPVR, lastBar_VPVR, rangeHigh_VPVR, xloc=xloc.bar_index, color=topBottomLineColor_VPVR, width = 5))
+
+        array.set(bottomLines_VPVR, k_VPVR, line.new(firstBar_VPVR, rangeLow_VPVR, lastBar_VPVR, rangeLow_VPVR, xloc=xloc.bar_index, color=topBottomLineColor_VPVR, width = 6))
+
+       
+
+        // Define lows and highs of the hists
+
+        for i_VPVR = 0 to numOfHists_VPVR - 1
+
+            histLow_VPVR = rangeLow_VPVR + histHeight_VPVR * i_VPVR
+
+            histHigh_VPVR = rangeLow_VPVR + histHeight_VPVR * (i_VPVR + 1)
+
+            array.set(histLowList_VPVR, i_VPVR, histLow_VPVR)
+
+            array.set(histHighList_VPVR, i_VPVR, histHigh_VPVR)
+
+            array.set(histPriceList_VPVR, i_VPVR, (histLow_VPVR + histHigh_VPVR) / 2)
+
+           
+
+        // Assign bar's volumes to hists
+
+        for _i_VPVR = 0 to numOfBars_VPVR - 1
+
+            i_VPVR = offset_VPVR + distLastCandle_VPVR + _i_VPVR
+
+            totalVolume_VPVR := totalVolume_VPVR + volume[i_VPVR]
+
+            currentBarHeight_VPVR = high[i_VPVR] - low[i_VPVR]
+
+            currentBuyVolume_VPVR = (high[i_VPVR] == low[i_VPVR]) ? 0 : volume[i_VPVR] * (close[i_VPVR] - low[i_VPVR]) / currentBarHeight_VPVR
+
+            currentSellVolume_VPVR = (high[i_VPVR] == low[i_VPVR]) ? 0 : volume[i_VPVR] * (high[i_VPVR] - close[i_VPVR]) / currentBarHeight_VPVR
+
+
+
+            // Define the percentages of the current volume to give to hists
+
+            for j_VPVR = 0 to numOfHists_VPVR - 1
+
+                histLow_VPVR = array.get(histLowList_VPVR, j_VPVR)
+
+                histHigh_VPVR = array.get(histHighList_VPVR, j_VPVR)
+
+                target_VPVR = (math.max(histHigh_VPVR, high[i_VPVR]) - math.min(histLow_VPVR, low[i_VPVR]))
+
+                 - (math.max(histHigh_VPVR, high[i_VPVR]) - math.min(histHigh_VPVR, high[i_VPVR]))
+
+                 - (math.max(histLow_VPVR, low[i_VPVR]) - math.min(histLow_VPVR, low[i_VPVR]))
+
+                histVolumePercentage_VPVR = target_VPVR / currentBarHeight_VPVR
+
+               
+
+                histBuyVolume_VPVR = array.get(histBuyVolumeList_VPVR, j_VPVR)
+
+                histSellVolume_VPVR = array.get(histSellVolumeList_VPVR, j_VPVR)
+
+               
+
+                // If there is at least one hist affected
+
+                // then divide the current volume by the number of hists affected
+
+                if histVolumePercentage_VPVR > 0
+
+                    array.set(histBuyVolumeList_VPVR, j_VPVR, histBuyVolume_VPVR + currentBuyVolume_VPVR * histVolumePercentage_VPVR)
+
+                    array.set(histSellVolumeList_VPVR, j_VPVR, histSellVolume_VPVR + currentSellVolume_VPVR * histVolumePercentage_VPVR)
+
+       
+
+        // Find the hist with the highest volume
+
+        highestHistVolume_VPVR = 0.0
+
+        pocIndex_VPVR = 0
+
+        for i_VPVR = 0 to numOfHists_VPVR - 1
+
+            histBuyVolume_VPVR = array.get(histBuyVolumeList_VPVR, i_VPVR)
+
+            histSellVolume_VPVR = array.get(histSellVolumeList_VPVR, i_VPVR)
+
+            histVolume_VPVR = histBuyVolume_VPVR + histSellVolume_VPVR
+
+            if histVolume_VPVR > highestHistVolume_VPVR
+
+                highestHistVolume_VPVR := histVolume_VPVR
+
+                pocIndex_VPVR := i_VPVR
+
+
+
+        // Draw Point of Control
+
+        pocHistLow_VPVR = array.get(histLowList_VPVR, pocIndex_VPVR)
+
+        pocHistHigh_VPVR = array.get(histHighList_VPVR, pocIndex_VPVR)
+
+        pocPos_VPVR = pocHistLow_VPVR + (pocHistHigh_VPVR - pocHistLow_VPVR) / 2
+
+        array.set(pocLines_VPVR, k_VPVR, line.new(firstBar_VPVR, pocPos_VPVR, lastBar_VPVR, pocPos_VPVR, xloc=xloc.bar_index, color=pocLineColor_VPVR, width = 20))  
+
+   
+
+        // Value area calculation
+
+        valueAreaVolume_VPVR  = totalVolume_VPVR * 0.7
+
+        volumeAccum_VPVR := array.get(histBuyVolumeList_VPVR, pocIndex_VPVR) + array.get(histSellVolumeList_VPVR, pocIndex_VPVR)
+
+        VAH_VPVR := pocPos_VPVR
+
+        VAL_VPVR := pocPos_VPVR
+
+
+
+        upIndex_VPVR = pocIndex_VPVR + 1
+
+        downIndex_VPVR = pocIndex_VPVR - 1
+
+        for __VPVR = 0 to numOfHists_VPVR - 1
+
+            volUp_VPVR = (upIndex_VPVR < numOfHists_VPVR) ? (array.get(histBuyVolumeList_VPVR, upIndex_VPVR) + array.get(histSellVolumeList_VPVR, upIndex_VPVR)) : 0.0
+
+            volDown_VPVR = (downIndex_VPVR >= 0) ? (array.get(histBuyVolumeList_VPVR, downIndex_VPVR) + array.get(histSellVolumeList_VPVR, downIndex_VPVR)) : 0.0
+
+
+
+            if volumeAccum_VPVR >= valueAreaVolume_VPVR
+
+                break
+
+
+
+            canGoUp_VPVR = upIndex_VPVR < numOfHists_VPVR
+
+            canGoDown_VPVR = downIndex_VPVR >= 0
+
+
+
+            if not canGoUp_VPVR and not canGoDown_VPVR
+
+                break
+
+
+
+            if canGoUp_VPVR and (not canGoDown_VPVR or volUp_VPVR >= volDown_VPVR)
+
+                VAH_VPVR := array.get(histPriceList_VPVR, upIndex_VPVR)
+
+                volumeAccum_VPVR += volUp_VPVR
+
+                upIndex_VPVR += 1
+
+            else
+
+                VAL_VPVR := array.get(histPriceList_VPVR, downIndex_VPVR)
+
+                volumeAccum_VPVR += volDown_VPVR
+
+                downIndex_VPVR -= 1
+
+
+
+        array.set(vahLines_VPVR, k_VPVR, line.new(firstBar_VPVR, VAH_VPVR, lastBar_VPVR, VAH_VPVR, color=valueAreaLineColor_VPVR, width=8, style=line.style_solid))
+
+        array.set(valLines_VPVR, k_VPVR, line.new(firstBar_VPVR, VAL_VPVR, lastBar_VPVR, VAL_VPVR, color=valueAreaLineColor_VPVR, width=8, style=line.style_solid))
+
+
+
+        // Draw hists and highlight the Point of Control
+
+        for i_VPVR = 0 to numOfHists_VPVR - 1
+
+            histLow_VPVR = array.get(histLowList_VPVR, i_VPVR)
+
+            histHigh_VPVR = array.get(histHighList_VPVR, i_VPVR)
+
+            histBuyVolume_VPVR = array.get(histBuyVolumeList_VPVR, i_VPVR)
+
+            histSellVolume_VPVR = array.get(histSellVolumeList_VPVR, i_VPVR)
+
+            histVolume_VPVR = histBuyVolume_VPVR + histSellVolume_VPVR
+
+
+
+            histWidth_VPVR = 0.0
+
+            if highestHistVolume_VPVR > 0
+
+                histWidth_VPVR := histVolume_VPVR / highestHistVolume_VPVR * widestHistWidth_VPVR
+
+           
+
+            histBuyWidth_VPVR = 0.0
+
+            histSellWidth_VPVR = 0.0
+
+            if histVolume_VPVR > 0
+
+                histBuyWidth_VPVR := histBuyVolume_VPVR / histVolume_VPVR * histWidth_VPVR
+
+                histSellWidth_VPVR := histSellVolume_VPVR / histVolume_VPVR * histWidth_VPVR
+
+
+
+            // Draw buy and sell hists
+
+            boxIndex_VPVR = k_VPVR * numOfHists_VPVR + i_VPVR
+
+            buyHistEnd_VPVR = int(firstBar_VPVR + histBuyWidth_VPVR)
+
+            sellHistEnd_VPVR = int(buyHistEnd_VPVR + histSellWidth_VPVR)
+
+            buyBox_VPVR = box.new(left=firstBar_VPVR, top=histHigh_VPVR, right=buyHistEnd_VPVR, bottom=histLow_VPVR, bgcolor=buyBarColor_VPVR, border_width=0)
+
+            array.set(buyBars_VPVR, boxIndex_VPVR, buyBox_VPVR)
+
+            sellBox_VPVR = box.new(left=buyHistEnd_VPVR, top=histHigh_VPVR, right=sellHistEnd_VPVR, bottom=histLow_VPVR, bgcolor=sellBarColor_VPVR, border_width=0)
+
+            array.set(sellBars_VPVR, boxIndex_VPVR, sellBox_VPVR) 
