@@ -5,6 +5,24 @@ import { PineEngine } from '@luxalgo/vela-pinets';
 import { DemoEngine } from './demo-engine';
 import { playgroundStorage } from './persistence';
 import { USER_PINESCRIPT } from './user-script';
+import { registerWidgetAction, registerIcon } from '../src/plugin';
+
+// Register Pine Script icon and topbar button next to layout selector
+registerIcon(
+    'pine-code',
+    '<svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 4-3.5 4L5 12M11 4l3.5 4-3.5 4"/></svg>'
+);
+
+registerWidgetAction({
+    id: 'pine-scripts-action',
+    target: 'topbar',
+    label: 'Pine Editor',
+    icon: 'pine-code',
+    tooltip: 'Pine Script Library & Editor',
+    run: () => {
+        openScriptsModal();
+    },
+});
 
 const PINE_TEMPLATES: Record<string, string> = {
     userAllInOne: USER_PINESCRIPT,
@@ -179,7 +197,7 @@ const ws = new VelaWorkspace('#chart', {
     visibleRange: '1M',
     topbar: {
         left: ['symbol', 'timeframes', 'style', 'indicators', 'actions', 'undo-redo'],
-        right: ['layout', 'actions', 'alerts', 'panels', 'screenshot', 'fullscreen'],
+        right: ['layout', 'pine-scripts-action', 'actions', 'alerts', 'panels', 'screenshot', 'fullscreen'],
     },
 });
 
@@ -561,18 +579,84 @@ function sanitizePineScript(scriptCode: string): string {
     return code;
 }
 
-const savedCode = localStorage.getItem(SCRIPT_STORAGE_KEY);
-// If savedCode is empty or contains outdated code, automatically use fresh template
-const isOutdated = savedCode && (savedCode.includes('runtime.error') || savedCode.includes('import TradingView/ta/10') || !savedCode.includes('TF Demand'));
-const initialCode = (!savedCode || isOutdated) ? PINE_TEMPLATES.userAllInOne : savedCode;
-if (isOutdated) {
-    localStorage.setItem(SCRIPT_STORAGE_KEY, initialCode);
+// 6. Multi-Script Storage Model & Library (TradingView Style)
+interface SavedPineScript {
+    id: string;
+    title: string;
+    code: string;
+    updatedAt: number;
+    isDefault?: boolean;
 }
 
-// 6. Initialize Monaco Editor
+const SAVED_SCRIPTS_KEY = 'vela-terminal-saved-pine-scripts-v2';
+const ACTIVE_SCRIPT_ID_KEY = 'vela-terminal-active-pine-script-id-v2';
+
+function getDefaultScripts(): SavedPineScript[] {
+    const legacyCode = localStorage.getItem(SCRIPT_STORAGE_KEY);
+    const hasLegacyCustom = legacyCode && !legacyCode.includes('runtime.error') && legacyCode.includes('TF Demand');
+    return [
+        {
+            id: 'all-in-one',
+            title: 'All in One (Demand/Supply)',
+            code: hasLegacyCustom ? legacyCode : PINE_TEMPLATES.userAllInOne,
+            updatedAt: Date.now(),
+            isDefault: true,
+        },
+        {
+            id: 'mrs',
+            title: 'Mansfield Relative Strength (MRS)',
+            code: PINE_TEMPLATES.mrs,
+            updatedAt: Date.now() - 3600000,
+            isDefault: true,
+        },
+        {
+            id: 'ema-cross',
+            title: 'EMA Cross (v5)',
+            code: PINE_TEMPLATES.emaCross,
+            updatedAt: Date.now() - 7200000,
+        },
+        {
+            id: 'rsi-oscillator',
+            title: 'RSI Oscillator',
+            code: PINE_TEMPLATES.rsi,
+            updatedAt: Date.now() - 10800000,
+        },
+    ];
+}
+
+function loadSavedScripts(): SavedPineScript[] {
+    try {
+        const raw = localStorage.getItem(SAVED_SCRIPTS_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                return parsed;
+            }
+        }
+    } catch {
+        // Fall back to defaults
+    }
+    const def = getDefaultScripts();
+    saveSavedScripts(def);
+    return def;
+}
+
+function saveSavedScripts(scripts: SavedPineScript[]): void {
+    localStorage.setItem(SAVED_SCRIPTS_KEY, JSON.stringify(scripts));
+}
+
+let savedScripts = loadSavedScripts();
+let activeScriptId = localStorage.getItem(ACTIVE_SCRIPT_ID_KEY) || savedScripts[0].id;
+if (!savedScripts.some((s) => s.id === activeScriptId)) {
+    activeScriptId = savedScripts[0].id;
+}
+let activeScript = savedScripts.find((s) => s.id === activeScriptId)!;
+let activeScriptOriginalCode = activeScript.code;
+
+// 7. Initialize Monaco Editor
 const monacoContainer = document.getElementById('monaco-container')!;
 const editor = monaco.editor.create(monacoContainer, {
-    value: initialCode,
+    value: activeScript.code,
     language: 'pinescript',
     theme: 'vs-dark',
     automaticLayout: true,
@@ -583,44 +667,303 @@ const editor = monaco.editor.create(monacoContainer, {
     tabSize: 4,
 });
 
-// Auto-save script text on edits (debounced)
-let scriptAutoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+// UI elements
+const editorPanel = document.getElementById('editor-panel')!;
+const editorConsole = document.getElementById('editor-console')!;
+const activeScriptBtn = document.getElementById('active-script-btn')!;
+const activeScriptTitleEl = document.getElementById('active-script-title')!;
+const activeScriptModifiedEl = document.getElementById('active-script-modified')!;
+const openScriptsModalBtn = document.getElementById('open-scripts-modal-btn');
+const scriptsLibraryBtn = document.getElementById('scripts-library-btn');
+const closeEditorBtn = document.getElementById('close-editor-btn');
+const applyScriptBtn = document.getElementById('apply-script-btn')!;
+const saveScriptBtn = document.getElementById('save-script-btn');
+const headerSaveBtn = document.getElementById('header-save-btn');
+const scriptsModal = document.getElementById('scripts-modal')!;
+const scriptsModalList = document.getElementById('scripts-modal-list')!;
+const closeScriptsModalBtn = document.getElementById('close-scripts-modal-btn');
+const modalNewScriptBtn = document.getElementById('modal-new-script-btn');
+const scriptTitleDialog = document.getElementById('script-title-dialog')!;
+const scriptDialogHeading = document.getElementById('script-dialog-heading')!;
+const scriptDialogDesc = document.getElementById('script-dialog-desc')!;
+const scriptTitleInput = document.getElementById('script-title-input') as HTMLInputElement;
+const scriptDialogCancel = document.getElementById('script-dialog-cancel')!;
+const scriptDialogConfirm = document.getElementById('script-dialog-confirm')!;
+
+function updateActiveScriptUI(): void {
+    if (activeScriptTitleEl) {
+        activeScriptTitleEl.textContent = activeScript.title;
+    }
+    const isDirty = editor.getValue() !== activeScriptOriginalCode;
+    if (activeScriptModifiedEl) {
+        if (isDirty) {
+            activeScriptModifiedEl.classList.remove('hidden');
+        } else {
+            activeScriptModifiedEl.classList.add('hidden');
+        }
+    }
+}
+
+updateActiveScriptUI();
+
+// Dirty tracking
 editor.onDidChangeModelContent(() => {
-    if (scriptAutoSaveTimer) clearTimeout(scriptAutoSaveTimer);
-    scriptAutoSaveTimer = setTimeout(() => {
-        localStorage.setItem(SCRIPT_STORAGE_KEY, editor.getValue());
-    }, 800);
+    updateActiveScriptUI();
 });
 
-// 7. Template Dropdown
-const templateSelect = document.getElementById('template-select') as HTMLSelectElement;
-templateSelect.addEventListener('change', () => {
-    const val = templateSelect.value;
-    if (PINE_TEMPLATES[val]) {
-        editor.setValue(PINE_TEMPLATES[val]);
-        localStorage.setItem(SCRIPT_STORAGE_KEY, PINE_TEMPLATES[val]);
+// 8. Drawer Toggle & Layout Handling
+function openEditorDrawer(): void {
+    editorPanel.classList.remove('collapsed');
+    setTimeout(() => {
+        editor.layout();
+        window.dispatchEvent(new Event('resize'));
+    }, 50);
+}
+
+function closeEditorDrawer(): void {
+    editorPanel.classList.add('collapsed');
+    setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+    }, 200);
+}
+
+closeEditorBtn?.addEventListener('click', closeEditorDrawer);
+
+// Switch Active Script
+function switchToScript(id: string, openDrawer = true): void {
+    const target = savedScripts.find((s) => s.id === id);
+    if (!target) return;
+    activeScriptId = id;
+    activeScript = target;
+    localStorage.setItem(ACTIVE_SCRIPT_ID_KEY, id);
+    activeScriptOriginalCode = target.code;
+    editor.setValue(target.code);
+    updateActiveScriptUI();
+    if (openDrawer) {
+        openEditorDrawer();
+    }
+}
+
+// 9. Saved Scripts Library Modal
+function escapeHtml(str: string): string {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function openScriptsModal(): void {
+    renderScriptsList();
+    scriptsModal.classList.add('open');
+}
+
+function closeScriptsModal(): void {
+    scriptsModal.classList.remove('open');
+}
+
+function deleteScript(id: string): void {
+    if (savedScripts.length <= 1) {
+        alert('Cannot delete the last remaining script.');
+        return;
+    }
+    savedScripts = savedScripts.filter((s) => s.id !== id);
+    saveSavedScripts(savedScripts);
+    if (activeScriptId === id) {
+        switchToScript(savedScripts[0].id, false);
+    }
+    renderScriptsList();
+}
+
+function renderScriptsList(): void {
+    scriptsModalList.innerHTML = '';
+    if (savedScripts.length === 0) {
+        scriptsModalList.innerHTML = `
+            <div class="scripts-empty-state">
+                <p>No saved Pine scripts found.</p>
+                <button id="empty-new-script-btn" class="action-btn" style="margin-top:12px;">+ Create New Script</button>
+            </div>
+        `;
+        document.getElementById('empty-new-script-btn')?.addEventListener('click', () => {
+            promptNewScript();
+        });
+        return;
+    }
+
+    for (const script of savedScripts) {
+        const item = document.createElement('div');
+        item.className = `script-item${script.id === activeScriptId ? ' active' : ''}`;
+
+        const isOverlay = script.code.includes('overlay=true') || script.code.includes('overlay = true');
+        const badgeType = isOverlay ? 'Overlay' : 'Pane';
+        const updatedDate = new Date(script.updatedAt).toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+
+        item.innerHTML = `
+            <div class="script-item-info">
+                <div class="script-item-title">
+                    <span>${escapeHtml(script.title)}</span>
+                    <span class="script-badge">${badgeType}</span>
+                    ${script.id === activeScriptId ? '<span class="script-badge active-badge">Active</span>' : ''}
+                </div>
+                <div class="script-item-meta">
+                    Last modified: ${updatedDate}
+                </div>
+            </div>
+            <div class="script-item-actions">
+                <button class="script-item-btn open-btn" title="Open in Pine Editor">
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M12 2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM9 8H7M8 7v2"/>
+                    </svg>
+                    <span style="margin-left:4px;">Edit</span>
+                </button>
+                <button class="script-item-btn run-btn" title="Run on Chart" style="color:var(--success);">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+                        <path d="M4 2v12l10-6L4 2z"/>
+                    </svg>
+                    <span style="margin-left:4px;">Run</span>
+                </button>
+                ${
+                    savedScripts.length > 1
+                        ? `
+                <button class="script-item-btn delete delete-btn" title="Delete Script">
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M3 4h10M6 4V2h4v2M5 4v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V4"/>
+                    </svg>
+                </button>`
+                        : ''
+                }
+            </div>
+        `;
+
+        item.querySelector('.open-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeScriptsModal();
+            switchToScript(script.id, true);
+        });
+
+        item.addEventListener('click', () => {
+            closeScriptsModal();
+            switchToScript(script.id, true);
+        });
+
+        item.querySelector('.run-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeScriptsModal();
+            switchToScript(script.id, false);
+            void applyCurrentScript();
+        });
+
+        item.querySelector('.delete-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (confirm(`Delete Pine script "${script.title}"?`)) {
+                deleteScript(script.id);
+            }
+        });
+
+        scriptsModalList.appendChild(item);
+    }
+}
+
+openScriptsModalBtn?.addEventListener('click', openScriptsModal);
+scriptsLibraryBtn?.addEventListener('click', openScriptsModal);
+closeScriptsModalBtn?.addEventListener('click', closeScriptsModal);
+modalNewScriptBtn?.addEventListener('click', () => {
+    promptNewScript();
+});
+
+// 10. Title / Name Dialog Handling
+let onDialogConfirm: ((title: string) => void) | null = null;
+
+function showScriptTitleDialog(options: {
+    heading: string;
+    desc: string;
+    initialValue: string;
+    confirmLabel: string;
+    onConfirm: (title: string) => void;
+}): void {
+    scriptDialogHeading.textContent = options.heading;
+    scriptDialogDesc.textContent = options.desc;
+    scriptTitleInput.value = options.initialValue;
+    scriptDialogConfirm.textContent = options.confirmLabel;
+    onDialogConfirm = options.onConfirm;
+    scriptTitleDialog.classList.add('open');
+    setTimeout(() => {
+        scriptTitleInput.focus();
+        scriptTitleInput.select();
+    }, 50);
+}
+
+function hideScriptTitleDialog(): void {
+    scriptTitleDialog.classList.remove('open');
+    onDialogConfirm = null;
+}
+
+scriptDialogCancel?.addEventListener('click', hideScriptTitleDialog);
+scriptDialogConfirm?.addEventListener('click', () => {
+    const val = scriptTitleInput.value.trim();
+    if (val && onDialogConfirm) {
+        onDialogConfirm(val);
+    }
+    hideScriptTitleDialog();
+});
+scriptTitleInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        scriptDialogConfirm.click();
+    } else if (e.key === 'Escape') {
+        hideScriptTitleDialog();
     }
 });
 
-// 8. Toggle & Close Editor Panel
-const editorPanel = document.getElementById('editor-panel')!;
-const toggleEditorBtn = document.getElementById('toggle-editor-btn')!;
-const closeEditorBtn = document.getElementById('close-editor-btn')!;
-const editorConsole = document.getElementById('editor-console')!;
+function promptNewScript(): void {
+    closeScriptsModal();
+    showScriptTitleDialog({
+        heading: 'Create New Pine Script',
+        desc: 'Enter a name for your new Pine Script indicator:',
+        initialValue: 'My Custom Indicator',
+        confirmLabel: 'Create',
+        onConfirm: (title) => {
+            const id = 'script_' + Date.now();
+            const newScript: SavedPineScript = {
+                id,
+                title,
+                code: `//@version=5\nindicator("${title}", overlay=true)\n\n// Add your Pine Script logic here\nplot(close, "Close", color=color.blue)\n`,
+                updatedAt: Date.now(),
+            };
+            savedScripts.unshift(newScript);
+            saveSavedScripts(savedScripts);
+            switchToScript(id, true);
+        },
+    });
+}
 
-toggleEditorBtn.addEventListener('click', () => {
-    editorPanel.classList.toggle('collapsed');
-    editor.layout();
-});
-closeEditorBtn.addEventListener('click', () => {
-    editorPanel.classList.add('collapsed');
-});
+function promptRenameScript(): void {
+    showScriptTitleDialog({
+        heading: 'Rename Script',
+        desc: 'Enter a new title for this Pine Script:',
+        initialValue: activeScript.title,
+        confirmLabel: 'Rename',
+        onConfirm: (newTitle) => {
+            activeScript.title = newTitle;
+            activeScript.updatedAt = Date.now();
+            saveSavedScripts(savedScripts);
+            updateActiveScriptUI();
+        },
+    });
+}
 
-// 9. Save & Persistence (TradingView-style)
-function saveAll(): void {
+activeScriptBtn?.addEventListener('click', promptRenameScript);
+
+// 11. Save Active Script & Indicator Persistence
+function saveActiveScript(): void {
     const currentCode = editor.getValue();
-    localStorage.setItem(SCRIPT_STORAGE_KEY, currentCode);
+    activeScript.code = currentCode;
+    activeScript.updatedAt = Date.now();
+    activeScriptOriginalCode = currentCode;
+    saveSavedScripts(savedScripts);
+    updateActiveScriptUI();
 
+    // Also persist chart indicator inputs
     const allInputs: Record<string, Record<string, any>> = {};
     for (const h of ws.chart.indicators()) {
         try {
@@ -638,8 +981,15 @@ function saveAll(): void {
     localStorage.setItem(INDICATOR_STATE_KEY, JSON.stringify(state));
 
     editorConsole.className = 'success';
-    editorConsole.textContent = '✓ Saved script and chart indicator settings to browser storage.';
+    editorConsole.textContent = `✓ Saved "${activeScript.title}" to library.`;
 
+    const saveLabel = document.getElementById('save-script-label');
+    if (saveLabel) {
+        saveLabel.textContent = 'Saved ✓';
+        setTimeout(() => {
+            saveLabel.textContent = 'Save';
+        }, 2000);
+    }
     const headerSaveText = document.getElementById('header-save-text');
     if (headerSaveText) {
         headerSaveText.textContent = 'Saved ✓';
@@ -649,17 +999,14 @@ function saveAll(): void {
     }
 }
 
-const saveScriptBtn = document.getElementById('save-script-btn');
-saveScriptBtn?.addEventListener('click', saveAll);
-
-const headerSaveBtn = document.getElementById('header-save-btn');
-headerSaveBtn?.addEventListener('click', saveAll);
+saveScriptBtn?.addEventListener('click', saveActiveScript);
+headerSaveBtn?.addEventListener('click', saveActiveScript);
 
 // Ctrl+S / Cmd+S hotkey
 window.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        saveAll();
+        saveActiveScript();
     }
 });
 
@@ -673,7 +1020,6 @@ ws.chart.on('indicator:inputs', ({ id }) => {
         saved.allInputs[id] = currentInputs;
         if (id === ALL_IN_ONE_ID) saved.inputs = currentInputs;
         localStorage.setItem(INDICATOR_STATE_KEY, JSON.stringify(saved));
-        console.log(`[terminal] Persisted settings for ${id} to localStorage:`, Object.keys(currentInputs).length, 'values');
     }
 });
 
@@ -682,22 +1028,16 @@ ws.chart.on('indicator:removed', ({ id }) => {
     if (existing.allInputs) delete existing.allInputs[id];
     if (id === ALL_IN_ONE_ID) existing.applied = false;
     localStorage.setItem(INDICATOR_STATE_KEY, JSON.stringify(existing));
-    console.log(`[terminal] Indicator ${id} removed; updated state.`);
 });
 
-const reloadScriptBtn = document.getElementById('reload-script-btn');
-reloadScriptBtn?.addEventListener('click', () => {
-    editor.setValue(PINE_TEMPLATES.userAllInOne);
-    localStorage.setItem(SCRIPT_STORAGE_KEY, PINE_TEMPLATES.userAllInOne);
-    editorConsole.className = 'success';
-    editorConsole.textContent = '✓ Reloaded fresh pinescript.txt from disk with visible TradingFinder Demand/Supply zones!';
-});
-
-// 10. "Apply to Chart" Execution
-const applyScriptBtn = document.getElementById('apply-script-btn')!;
+// 12. "Apply to Chart" Execution
 let isCompiling = false;
 
-async function applyScript(scriptCode: string, targetId?: string, targetChart?: any): Promise<{ ok: boolean; title?: string; error?: string }> {
+async function applyScript(
+    scriptCode: string,
+    targetId?: string,
+    targetChart?: any
+): Promise<{ ok: boolean; title?: string; error?: string }> {
     const raw = scriptCode.trim();
     if (!raw) return { ok: false, error: 'Empty script' };
     const sanitizedScript = sanitizePineScript(raw);
@@ -757,8 +1097,8 @@ async function applyCurrentScript(): Promise<void> {
     editorConsole.className = '';
     editorConsole.textContent = 'Compiling and executing Pine Script...';
 
-    const isMRS = scriptCode.includes('Mansfield') || scriptCode.includes('MRS');
-    const id = isMRS ? MRS_INDICATOR_ID : ALL_IN_ONE_ID;
+    const isMRS = activeScript.id === 'mrs' || scriptCode.includes('Mansfield') || scriptCode.includes('MRS');
+    const id = isMRS ? MRS_INDICATOR_ID : activeScript.id === 'all-in-one' ? ALL_IN_ONE_ID : activeScript.id;
 
     // Apply to the active cell
     const result = await applyScript(scriptCode, id, ws.chart);
@@ -774,7 +1114,7 @@ async function applyCurrentScript(): Promise<void> {
         editorConsole.className = 'success';
         const paneInfo = isMRS ? ' (separate bottom pane)' : '';
         editorConsole.textContent = `✓ Successfully applied "${result.title}"${paneInfo} in ${elapsed}ms across all charts.`;
-        saveAll();
+        saveActiveScript();
         focusCMP();
     } else {
         editorConsole.className = 'error';
@@ -784,6 +1124,7 @@ async function applyCurrentScript(): Promise<void> {
 }
 
 applyScriptBtn.addEventListener('click', () => {
+    saveActiveScript();
     void applyCurrentScript();
 });
 
@@ -791,10 +1132,12 @@ applyScriptBtn.addEventListener('click', () => {
 setTimeout(async () => {
     const savedState = getSavedIndicatorState();
     if (!savedState || savedState.applied !== false) {
-        await applyScript(initialCode, ALL_IN_ONE_ID);
+        const defaultScript = savedScripts.find((s) => s.id === 'all-in-one') || activeScript;
+        await applyScript(defaultScript.code, ALL_IN_ONE_ID);
     }
     // Also apply Mansfield Relative Strength (MRS) to the separate bottom pane
-    await applyScript(PINE_TEMPLATES.mrs, MRS_INDICATOR_ID);
+    const mrsScript = savedScripts.find((s) => s.id === 'mrs') || { code: PINE_TEMPLATES.mrs };
+    await applyScript(mrsScript.code, MRS_INDICATOR_ID);
     focusCMP();
 }, 1000);
 

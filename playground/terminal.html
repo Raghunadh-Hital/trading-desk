@@ -118,7 +118,7 @@
                 flex: 1;
                 position: relative;
                 display: flex;
-                flex-direction: column;
+                flex-direction: row;
                 overflow: hidden;
             }
             #chart-wrapper {
@@ -126,42 +126,49 @@
                 position: relative;
                 width: 100%;
                 height: 100%;
+                min-width: 0;
             }
             #chart {
                 position: absolute;
                 inset: 0;
             }
 
-            /* Collapsible Pine Script Editor Panel */
+            /* Right-Side Pine Script Editor Drawer (TradingView Style) */
             #editor-panel {
-                height: 320px;
+                width: 580px;
+                max-width: 65vw;
+                height: 100%;
                 background: #0d1117;
-                border-top: 2px solid #30363d;
+                border-left: 1px solid #30363d;
+                border-top: none;
                 display: flex;
                 flex-direction: column;
-                transition: height 200ms ease;
-                z-index: 20;
+                transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1);
+                z-index: 25;
+                flex-shrink: 0;
+                position: relative;
             }
             #editor-panel.collapsed {
-                height: 0px !important;
-                border-top: none;
+                width: 0px !important;
+                border-left: none;
                 overflow: hidden;
             }
             #editor-toolbar {
-                height: 40px;
+                height: 44px;
                 background: #161b22;
                 border-bottom: 1px solid #30363d;
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                padding: 0 16px;
+                padding: 0 12px;
                 font-size: 13px;
                 flex-shrink: 0;
+                gap: 8px;
             }
             .toolbar-group {
                 display: flex;
                 align-items: center;
-                gap: 12px;
+                gap: 8px;
             }
             .editor-title {
                 font-weight: 600;
@@ -169,6 +176,35 @@
                 display: flex;
                 align-items: center;
                 gap: 8px;
+            }
+            #active-script-btn {
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 10px;
+                background: #21262d;
+                border: 1px solid #30363d;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: 500;
+                color: #e6edf3;
+                transition: background 120ms, border-color 120ms;
+            }
+            #active-script-btn:hover {
+                background: #30363d;
+                border-color: #58a6ff;
+            }
+            .modified-dot {
+                display: inline-block;
+                width: 7px;
+                height: 7px;
+                background: #f59e0b;
+                border-radius: 50%;
+                box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+            }
+            .modified-dot.hidden {
+                display: none;
             }
             #monaco-container {
                 flex: 1;
@@ -192,6 +228,145 @@
             }
             #editor-console.error {
                 color: var(--danger);
+            }
+
+            /* Pine Scripts Modal & Save Dialog */
+            .scripts-modal-backdrop {
+                display: none;
+                position: fixed;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.75);
+                backdrop-filter: blur(4px);
+                z-index: 100;
+                align-items: center;
+                justify-content: center;
+            }
+            .scripts-modal-backdrop.open {
+                display: flex;
+            }
+            .scripts-modal-card {
+                background: #161b22;
+                border: 1px solid #30363d;
+                border-radius: 10px;
+                padding: 20px 24px;
+                width: 540px;
+                max-width: 92vw;
+                max-height: 85vh;
+                display: flex;
+                flex-direction: column;
+                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+            }
+            .scripts-modal-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 16px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid #30363d;
+            }
+            .scripts-modal-header h3 {
+                margin: 0;
+                font-size: 16px;
+                font-weight: 600;
+                color: #f0f6fc;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .scripts-list {
+                flex: 1;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                margin-bottom: 16px;
+                max-height: 400px;
+                padding-right: 4px;
+            }
+            .script-item {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 10px 14px;
+                background: #0d1117;
+                border: 1px solid #30363d;
+                border-radius: 6px;
+                cursor: pointer;
+                transition: background 120ms, border-color 120ms;
+            }
+            .script-item:hover {
+                background: #21262d;
+                border-color: #58a6ff;
+            }
+            .script-item.active {
+                border-color: #238636;
+                background: rgba(35, 134, 54, 0.12);
+            }
+            .script-item-info {
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+                min-width: 0;
+            }
+            .script-item-title {
+                font-size: 13px;
+                font-weight: 600;
+                color: #e6edf3;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .script-badge {
+                font-size: 10px;
+                padding: 1px 6px;
+                border-radius: 10px;
+                background: #21262d;
+                border: 1px solid #30363d;
+                color: #8b949e;
+                font-weight: 500;
+            }
+            .script-badge.active-badge {
+                background: rgba(35, 134, 54, 0.2);
+                border-color: #238636;
+                color: #3fb950;
+            }
+            .script-item-meta {
+                font-size: 11px;
+                color: #8b949e;
+            }
+            .script-item-actions {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .script-item-btn {
+                background: none;
+                border: 1px solid transparent;
+                color: #8b949e;
+                cursor: pointer;
+                padding: 5px 8px;
+                border-radius: 4px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 12px;
+                transition: all 120ms;
+            }
+            .script-item-btn:hover {
+                background: #30363d;
+                color: #f0f6fc;
+                border-color: #484f58;
+            }
+            .script-item-btn.delete:hover {
+                background: rgba(248, 81, 73, 0.15);
+                color: #f85149;
+                border-color: rgba(248, 81, 73, 0.3);
+            }
+            .scripts-empty-state {
+                text-align: center;
+                padding: 36px 16px;
+                color: #8b949e;
+                font-size: 13px;
             }
 
             /* Auth Modal */
@@ -390,11 +565,12 @@
                     </svg>
                     <span id="header-save-text">Save</span>
                 </button>
-                <button id="toggle-editor-btn" class="action-btn secondary">
-                    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <path d="m5 4-3.5 4L5 12M11 4l3.5 4-3.5 4"/>
+                <button id="open-scripts-modal-btn" class="action-btn secondary" title="Pine Script Library & Editor">
+                    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="10 4 14 8 10 12"/>
+                        <polyline points="6 12 2 8 6 4"/>
                     </svg>
-                    <span>Pine Script Editor</span>
+                    <span>Pine Scripts</span>
                 </button>
             </div>
         </header>
@@ -405,48 +581,81 @@
                 <div id="chart"></div>
             </div>
 
-            <!-- Collapsible Pine Script Editor Panel -->
-            <div id="editor-panel">
+            <!-- Collapsible Pine Script Editor Panel (TradingView Right-Side Style) -->
+            <div id="editor-panel" class="collapsed">
                 <div id="editor-toolbar">
                     <div class="toolbar-group">
-                        <div class="editor-title">
-                            <span>Pine Script v5/v6</span>
-                        </div>
-                        <select id="template-select" style="background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:4px; padding:3px 8px; font-size:12px;">
-                            <option value="userAllInOne" selected>My Script: All in One (pinescript.txt)</option>
-                            <option value="mrs">Mansfield Relative Strength (MRS - Bottom Pane)</option>
-                            <option value="emaCross">Template: EMA Cross (v5)</option>
-                            <option value="rsi">Template: RSI Oscillator</option>
-                            <option value="bollinger">Template: Bollinger Bands</option>
-                            <option value="macd">Template: MACD</option>
-                        </select>
+                        <button id="active-script-btn" title="Click to switch or rename script">
+                            <span id="active-script-title">My script</span>
+                            <span id="active-script-modified" class="modified-dot hidden" title="Unsaved changes"></span>
+                            <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor">
+                                <path d="m4.427 6.427 3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 6H4.604a.25.25 0 0 0-.177.427z"/>
+                            </svg>
+                        </button>
                     </div>
                     <div class="toolbar-group">
-                        <button id="reload-script-btn" class="action-btn secondary" title="Reload clean latest pinescript.txt from disk">
-                            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8">
-                                <path d="M1 4v4h4M15 12v-4h-4"/>
-                                <path d="M2.5 10a6 6 0 1 0 1.5-5.5L1 8M15 8l-3 3.5A6 6 0 1 1 13.5 6"/>
+                        <button id="apply-script-btn" class="action-btn" title="Compile and run indicator on chart (Ctrl+Enter)">
+                            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+                                <path d="M4 2v12l10-6L4 2z"/>
                             </svg>
-                            <span>Reload File</span>
+                            <span>Run</span>
                         </button>
-                        <button id="save-script-btn" class="action-btn secondary" title="Save Pine Script and custom indicator settings (Ctrl+S)">
+                        <button id="save-script-btn" class="action-btn secondary" title="Save script (Ctrl+S)">
                             <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8">
                                 <path d="M13 14H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h7l4 4v7a1 1 0 0 1-1 1z"/>
                                 <path d="M10 2v4H5V2M5 14v-5h6v5"/>
                             </svg>
-                            <span>Save</span>
+                            <span id="save-script-label">Save</span>
                         </button>
-                        <button id="apply-script-btn" class="action-btn">
-                            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
-                                <path d="M4 2v12l10-6L4 2z"/>
+                        <button id="scripts-library-btn" class="action-btn secondary" title="Open Saved Scripts Library">
+                            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6">
+                                <path d="M2 3h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/>
+                                <path d="M5 3v10M2 7h3M2 10h3"/>
                             </svg>
-                            <span>Apply to Chart</span>
+                            <span>Scripts</span>
                         </button>
-                        <button id="close-editor-btn" style="background:none; border:none; color:#8b949e; cursor:pointer; font-size:16px;">✕</button>
+                        <button id="close-editor-btn" style="background:none; border:none; color:#8b949e; cursor:pointer; font-size:16px; padding:4px 6px; border-radius:4px;" title="Close Editor">✕</button>
                     </div>
                 </div>
                 <div id="monaco-container"></div>
                 <div id="editor-console">Ready</div>
+            </div>
+        </div>
+
+        <!-- Saved Pine Scripts Modal (TradingView Style) -->
+        <div id="scripts-modal" class="scripts-modal-backdrop">
+            <div class="scripts-modal-card">
+                <div class="scripts-modal-header">
+                    <h3>
+                        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="10 4 14 8 10 12"/>
+                            <polyline points="6 12 2 8 6 4"/>
+                        </svg>
+                        <span>Pine Script Library</span>
+                    </h3>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <button id="modal-new-script-btn" class="action-btn" style="padding:6px 12px; font-size:12px;">
+                            + Create New Script
+                        </button>
+                        <button id="close-scripts-modal-btn" style="background:none; border:none; color:#8b949e; cursor:pointer; font-size:16px; padding:4px 6px;">✕</button>
+                    </div>
+                </div>
+                <div id="scripts-modal-list" class="scripts-list">
+                    <!-- Populated dynamically via terminal.ts -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Script Title / Rename Dialog -->
+        <div id="script-title-dialog" class="scripts-modal-backdrop">
+            <div class="modal-card" style="width:420px;">
+                <h3 id="script-dialog-heading">Save Script</h3>
+                <p id="script-dialog-desc">Enter a title for this Pine Script indicator:</p>
+                <input id="script-title-input" type="text" placeholder="e.g. My Custom Indicator" />
+                <div class="modal-actions">
+                    <button id="script-dialog-cancel" class="action-btn secondary">Cancel</button>
+                    <button id="script-dialog-confirm" class="action-btn">Save</button>
+                </div>
             </div>
         </div>
 
