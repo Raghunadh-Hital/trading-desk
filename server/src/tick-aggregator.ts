@@ -176,8 +176,12 @@ export class TickAggregator {
       }
 
       this.socketInstance.connect();
-    } catch (err) {
-      console.warn('[TickAggregator] Failed to initialize FYERS socket (token may be expired):', err);
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      console.warn('[TickAggregator] Failed to initialize FYERS socket:', msg);
+      if (/expired token|failed to decode jwt/i.test(msg)) {
+        fyersService.logout();
+      }
       // Clean up failed socket reference so mock tick generator can continue fallback
       this.socketInstance = null;
       this.startMockTickGenerator();

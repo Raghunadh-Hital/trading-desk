@@ -108,6 +108,7 @@ export function createServerApp() {
       return res.status(400).json({ error: 'Token string is required' });
     }
     fyersService.setToken(token);
+    tickAggregator.connectFyersSocket();
     res.json({ success: true, message: 'Token saved and configured' });
   });
 
