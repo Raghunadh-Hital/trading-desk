@@ -72,10 +72,19 @@ export function dedupeSorted(bars: OHLCV[]): OHLCV[] {
     return [...byTime.values()].sort((a, b) => a.time - b.time);
 }
 
+interface CachedSeries {
+    fetchedAt: number;
+    fromSec: number;
+    toSec: number;
+    bars: OHLCV[];
+}
+
 export class FyersProvider implements DataProvider {
     private readonly proxyUrl: string;
     private readonly wsUrl: string;
     private readonly lastCloses = new Map<string, number>();
+    private readonly barCache = new Map<string, CachedSeries>();
+    private readonly inflightRequests = new Map<string, Promise<OHLCV[]>>();
 
     constructor(config?: FyersProviderConfig) {
         this.proxyUrl = config?.proxyUrl?.replace(/\/$/, '') ?? 'http://127.0.0.1:5000';
@@ -145,22 +154,21 @@ export class FyersProvider implements DataProvider {
         const resolution = normalizeTf(timeframe);
 
         const nowSec = Math.floor(Date.now() / 1000);
-        const rangeTo = range.to ? Math.floor(range.to / 1000) : nowSec;
+        // Align live upper bound to 60s buckets so indicator re-runs on 1s ticks don't bust the cache.
+        const rangeTo = range.to ? Math.floor(range.to / 1000) : Math.ceil(nowSec / 60) * 60;
 
         let rangeFrom: number;
         if (range.from != null) {
-            rangeFrom = Math.floor(range.from / 1000);
+            rangeFrom = Math.floor(Math.floor(range.from / 1000) / 60) * 60;
         } else {
             // Indian markets trade 6.25 hours/day (09:15 - 15:30 IST) on weekdays.
-            // When calculating calendar lookback for N bars, scale by market operating ratio (~5.5x).
-            const targetBars = Math.max(range.limit ?? 500, 500);
             const intervalSec = this.resolutionInSeconds(resolution);
             if (resolution === 'W') {
                 // Weekly: request 5 full calendar years (~260 weekly candles)
                 rangeFrom = rangeTo - 5 * 365 * 86400;
             } else if (resolution === 'M') {
-                // Monthly: request 10 full calendar years (~120 monthly candles)
-                rangeFrom = rangeTo - 10 * 365 * 86400;
+                // Monthly: request 5 full calendar years (matches FYERS safe epoch lookback)
+                rangeFrom = rangeTo - 5 * 365 * 86400;
             } else if (resolution === 'D') {
                 // Daily: request 3 full calendar years (~750 daily trading sessions)
                 rangeFrom = rangeTo - 3 * 365 * 86400;
@@ -173,40 +181,72 @@ export class FyersProvider implements DataProvider {
             }
         }
 
-        const url = `${this.proxyUrl}/api/history?symbol=${encodeURIComponent(symbol)}&resolution=${encodeURIComponent(resolution)}&range_from=${rangeFrom}&range_to=${rangeTo}`;
+        const seriesKey = `${symbol}:${resolution}`;
+        const existing = this.barCache.get(seriesKey);
+        if (
+            existing &&
+            Date.now() - existing.fetchedAt < 60_000 &&
+            existing.fromSec <= rangeFrom &&
+            existing.toSec >= rangeTo - 60
+        ) {
+            return existing.bars.filter((b) => b.time >= rangeFrom * 1000 && b.time <= rangeTo * 1000);
+        }
 
-        try {
-            const res = await fetch(url);
-            if (res.ok) {
-                const data = await res.json();
-                if (data && Array.isArray(data.candles)) {
-                    const bars: OHLCV[] = data.candles.map((c: any) => ({
-                        time: Number(c.time),
-                        open: Number(c.open),
-                        high: Number(c.high),
-                        low: Number(c.low),
-                        close: Number(c.close),
-                        volume: Number(c.volume ?? 0),
-                    }));
-                    const sorted = dedupeSorted(bars);
-                    if (sorted.length > 0) {
-                        const last = sorted[sorted.length - 1];
-                        if (last) this.lastCloses.set(symbol, last.close);
+        const flightKey = `${seriesKey}:${rangeFrom}:${rangeTo}`;
+        const inflight = this.inflightRequests.get(flightKey);
+        if (inflight) {
+            return inflight;
+        }
+
+        const requestPromise = (async (): Promise<OHLCV[]> => {
+            const url = `${this.proxyUrl}/api/history?symbol=${encodeURIComponent(symbol)}&resolution=${encodeURIComponent(resolution)}&range_from=${rangeFrom}&range_to=${rangeTo}`;
+
+            try {
+                const res = await fetch(url);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && Array.isArray(data.candles)) {
+                        const bars: OHLCV[] = data.candles.map((c: any) => ({
+                            time: Number(c.time),
+                            open: Number(c.open),
+                            high: Number(c.high),
+                            low: Number(c.low),
+                            close: Number(c.close),
+                            volume: Number(c.volume ?? 0),
+                        }));
+                        const sorted = dedupeSorted(bars);
+                        if (sorted.length > 0) {
+                            const last = sorted[sorted.length - 1];
+                            if (last) this.lastCloses.set(symbol, last.close);
+                        }
+                        const prev = this.barCache.get(seriesKey);
+                        const merged = prev ? dedupeSorted([...prev.bars, ...sorted]) : sorted;
+                        this.barCache.set(seriesKey, {
+                            fetchedAt: Date.now(),
+                            fromSec: prev ? Math.min(prev.fromSec, rangeFrom) : rangeFrom,
+                            toSec: prev ? Math.max(prev.toSec, rangeTo) : rangeTo,
+                            bars: merged,
+                        });
+                        return sorted;
                     }
-                    return sorted;
                 }
+            } catch (err) {
+                console.warn(`[FyersProvider] Fetch failed: ${err}. Using fallback synthesis.`);
             }
-        } catch (err) {
-            console.warn(`[FyersProvider] Fetch failed: ${err}. Using fallback synthesis.`);
-        }
 
-        // Fallback synthetic candles if server proxy is unavailable
-        const fallback = this.synthesizeBars(symbol, resolution, rangeFrom, rangeTo);
-        if (fallback.length > 0) {
-            const last = fallback[fallback.length - 1];
-            if (last) this.lastCloses.set(symbol, last.close);
-        }
-        return fallback;
+            // Fallback synthetic candles if server proxy is unavailable
+            const fallback = this.synthesizeBars(symbol, resolution, rangeFrom, rangeTo);
+            if (fallback.length > 0) {
+                const last = fallback[fallback.length - 1];
+                if (last) this.lastCloses.set(symbol, last.close);
+            }
+            return fallback;
+        })().finally(() => {
+            this.inflightRequests.delete(flightKey);
+        });
+
+        this.inflightRequests.set(flightKey, requestPromise);
+        return requestPromise;
     }
 
     subscribe(ticker: string, timeframe: string, onBar: (bar: OHLCV) => void): Unsubscribe {

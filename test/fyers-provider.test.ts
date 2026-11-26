@@ -111,5 +111,33 @@ describe('FyersProvider', () => {
             expect(bars[0]!.open).toBeGreaterThan(0);
             expect(bars[0]!.high).toBeGreaterThanOrEqual(bars[0]!.low);
         });
+
+        it('deduplicates concurrent calls and serves cached series within 60s without re-fetching', async () => {
+            const provider = new FyersProvider({ proxyUrl: 'http://127.0.0.1:5000' });
+            const nowMs = Date.now();
+            const mockCandles = [
+                { time: nowMs - 7200_000, open: 100, high: 105, low: 95, close: 102, volume: 100 },
+                { time: nowMs - 3600_000, open: 102, high: 108, low: 100, close: 106, volume: 150 },
+            ];
+
+            const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+                ok: true,
+                json: async () => ({ s: 'ok', candles: mockCandles }),
+            } as any);
+
+            // Concurrent calls for the same range coalesce into a single fetch
+            const [b1, b2] = await Promise.all([
+                provider.getBars('NSE:RVNL-EQ', '15', { limit: 10 }),
+                provider.getBars('NSE:RVNL-EQ', '15', { limit: 10 }),
+            ]);
+            expect(b1).toHaveLength(2);
+            expect(b2).toHaveLength(2);
+            expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+            // Subsequent tail-only fetch within 60s reuses the cached response (0 extra network calls)
+            const tail = await provider.getBars('NSE:RVNL-EQ', '15', { from: nowMs - 5000_000 });
+            expect(tail).toHaveLength(1);
+            expect(fetchSpy).toHaveBeenCalledTimes(1);
+        });
     });
 });

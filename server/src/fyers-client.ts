@@ -17,6 +17,8 @@ export class FyersClientService {
   private model: any;
   private currentToken: string | null = null;
   private lastValidatedAt: number = 0;
+  private dailyLimitUntil: number = 0;
+  private inflightHistory = new Map<string, Promise<{ s: 'ok' | 'error'; candles: VelaBar[]; source: 'fyers' | 'cache' | 'mock'; rateLimited?: boolean }>>();
   private apiQueue: Promise<unknown> = Promise.resolve();
   private lastApiCallAt: number = 0;
 
@@ -100,6 +102,7 @@ export class FyersClientService {
   public setToken(token: string): void {
     this.currentToken = token;
     this.lastValidatedAt = Date.now();
+    this.dailyLimitUntil = 0;
     this.model.setAccessToken(token);
     saveStoredToken(token);
   }
@@ -146,17 +149,42 @@ export class FyersClientService {
     resolution?: string;
     rangeFrom?: number; // epoch seconds or YYYY-MM-DD
     rangeTo?: number;
-  }): Promise<{ s: 'ok' | 'error'; candles: VelaBar[]; source: 'fyers' | 'cache' | 'mock' }> {
+  }): Promise<{ s: 'ok' | 'error'; candles: VelaBar[]; source: 'fyers' | 'cache' | 'mock'; rateLimited?: boolean }> {
     const symbol = params.symbol || 'NSE:NIFTY50-INDEX';
     const resolution = (params.resolution || '15').toUpperCase();
-    const rangeTo = params.rangeTo || Math.floor(Date.now() / 1000);
-    const rangeFrom = params.rangeFrom || (rangeTo - 30 * 86400);
+    const nowSec = Math.floor(Date.now() / 1000);
+    const rawTo = params.rangeTo ? Math.min(Math.floor(params.rangeTo), nowSec) : nowSec;
+    const rawFrom = params.rangeFrom ? Math.floor(params.rangeFrom) : rawTo - 30 * 86400;
 
-    const cacheKey = `history:${symbol}:${resolution}:${rangeFrom}:${rangeTo}`;
+    // Align request key to 60s buckets so concurrent panes/ticks coalesce into a single fetch.
+    const bucketFrom = Math.floor(rawFrom / 60) * 60;
+    const bucketTo = Math.ceil(rawTo / 60) * 60;
+    const cacheKey = `history:${symbol}:${resolution}:${bucketFrom}:${bucketTo}`;
     const cached = historyCache.get<VelaBar[]>(cacheKey);
     if (cached) {
       return { s: 'ok', candles: cached, source: 'cache' };
     }
+
+    const inflight = this.inflightHistory.get(cacheKey);
+    if (inflight) {
+      return inflight;
+    }
+
+    const promise = this.fetchHistoryCoalesced(symbol, resolution, rawFrom, rawTo, cacheKey).finally(() => {
+      this.inflightHistory.delete(cacheKey);
+    });
+    this.inflightHistory.set(cacheKey, promise);
+    return promise;
+  }
+
+  private async fetchHistoryCoalesced(
+    symbol: string,
+    resolution: string,
+    rawFrom: number,
+    rawTo: number,
+    cacheKey: string
+  ): Promise<{ s: 'ok' | 'error'; candles: VelaBar[]; source: 'fyers' | 'cache' | 'mock'; rateLimited?: boolean }> {
+    let hitDailyLimit = this.dailyLimitUntil > Date.now();
 
     // Attempt real FYERS request if token and app id exist
     if (this.isAuthenticated() && this.isConfigured()) {
@@ -170,29 +198,55 @@ export class FyersClientService {
           resolution === '1M';
         // Use 360 days (< 365/366) per chunk for daily/weekly/monthly so leap years never exceed FYERS 365-day window
         const chunkSec = isDailyOrHigher ? 360 * 86400 : 90 * 86400;
-
-        // FYERS Historical Data retention limits:
-        // - Intraday (1m, 3m, 5m, 15m, 60m): max 100 days history available from API
-        // - Daily / Weekly / Monthly: cap at 5 years to avoid FYERS "Invalid input" on very old epoch ranges
         const maxLookbackSec = isDailyOrHigher ? 5 * 365 * 86400 : 100 * 86400;
-        const nowSec = Math.floor(Date.now() / 1000);
-        const end = Math.min(Math.floor(rangeTo), nowSec);
-        const effectiveFrom = Math.max(Math.floor(rangeFrom), end - maxLookbackSec);
 
-        // Partition requested time range into FYERS-compliant windows
-        const chunkRanges: Array<{ from: number; to: number }> = [];
-        let curr = effectiveFrom;
-        while (curr < end) {
-          const next = Math.min(curr + chunkSec, end);
-          if (next > curr) {
-            chunkRanges.push({ from: curr, to: next });
+        const nowSec = Math.floor(Date.now() / 1000);
+        const end = Math.min(rawTo, nowSec);
+        const effectiveFrom = Math.max(rawFrom, end - maxLookbackSec);
+
+        // Anchor chunk windows to today's UTC midnight so historical windows keep identical
+        // timestamps all day and hit the 24h chunk cache instead of shifting every second.
+        const todayMidnight = Math.floor(nowSec / 86400) * 86400;
+        const numPastWindows = Math.ceil(maxLookbackSec / chunkSec);
+        const allWindows: Array<{ from: number; to: number; isToday: boolean; cacheKey: string }> = [];
+
+        for (let k = numPastWindows; k >= 1; k--) {
+          const wFrom = Math.max(todayMidnight - k * chunkSec, todayMidnight - maxLookbackSec);
+          const wTo = todayMidnight - (k - 1) * chunkSec;
+          if (wTo > wFrom) {
+            allWindows.push({
+              from: wFrom,
+              to: wTo,
+              isToday: false,
+              cacheKey: `chunk:${symbol}:${resolution}:${wFrom}:${wTo}`,
+            });
           }
-          curr = next;
+        }
+        if (nowSec > todayMidnight) {
+          allWindows.push({
+            from: todayMidnight,
+            to: nowSec,
+            isToday: true,
+            cacheKey: `chunk:${symbol}:${resolution}:today:${todayMidnight}`,
+          });
         }
 
-        // Execute all chunks through the global rate-limited queue (max ~2.8 req/s across the entire server).
+        const chunkRanges = allWindows.filter((w) => w.to >= effectiveFrom && w.from <= end);
         const chunkResults: FyersRawCandle[][] = [];
+        let fetchedAnyFromNetwork = false;
+
         for (const c of chunkRanges) {
+          const cachedChunk = historyCache.get<FyersRawCandle[]>(c.cacheKey);
+          if (cachedChunk) {
+            chunkResults.push(cachedChunk);
+            continue;
+          }
+
+          if (hitDailyLimit || this.dailyLimitUntil > Date.now()) {
+            hitDailyLimit = true;
+            continue;
+          }
+
           const fetchChunk = async (attempt = 0): Promise<FyersRawCandle[]> => {
             try {
               const fyersReq = {
@@ -205,24 +259,36 @@ export class FyersClientService {
               };
               const res: FyersHistoryResponse = await this.scheduleFyersCall(() => this.model.getHistory(fyersReq));
               if (res && res.s === 'ok' && Array.isArray(res.candles)) {
-                return res.candles as FyersRawCandle[];
+                const candles = res.candles as FyersRawCandle[];
+                fetchedAnyFromNetwork = true;
+                // Past windows are immutable (24h cache); today's window caches for 120s (live ticks arrive via WebSocket)
+                historyCache.set(c.cacheKey, candles, c.isToday ? 120 : 86400);
+                return candles;
               } else if (res && (res as any).code === -16) {
                 this.logout();
               }
             } catch (err: any) {
               const errMsg = err?.message || (typeof err === 'string' ? err : JSON.stringify(err)) || '';
+              if (/requests\/day|daily limit/i.test(errMsg)) {
+                if (this.dailyLimitUntil <= Date.now()) {
+                  console.warn(`[fyers-client] Daily API limit reached (5,000 req/day). Pausing REST history calls for 15 minutes; cached bars & live WebSocket ticks remain active.`);
+                }
+                this.dailyLimitUntil = Date.now() + 15 * 60 * 1000;
+                hitDailyLimit = true;
+                return [];
+              }
               if (/limit of 5 requests\/second|rate limit/i.test(errMsg) && attempt < 1) {
                 await new Promise((resolve) => setTimeout(resolve, 1200));
                 return fetchChunk(attempt + 1);
               }
               console.warn(`[fyers-client] Chunk [${c.from}..${c.to}] error:`, errMsg);
-              // ONLY logout if FYERS explicitly rejects the user/token credentials.
               if (/could not authenticate the user|token is invalid|expired token/i.test(errMsg) || err?.code === -16) {
                 this.logout();
               }
             }
             return [];
           };
+
           chunkResults.push(await fetchChunk());
         }
 
@@ -234,21 +300,32 @@ export class FyersClientService {
         if (rawCandles.length > 0) {
           const bars = transformFyersCandlesToVelaBars(rawCandles);
           const byTime = new Map<number, VelaBar>();
-          for (const b of bars) byTime.set(b.time, b);
+          for (const b of bars) {
+            if (b.time >= effectiveFrom * 1000 && b.time <= end * 1000) {
+              byTime.set(b.time, b);
+            }
+          }
           const sorted = Array.from(byTime.values()).sort((a, b) => a.time - b.time);
 
-          historyCache.set(cacheKey, sorted, 60);
-          return { s: 'ok', candles: sorted, source: 'fyers' };
+          if (sorted.length > 0) {
+            historyCache.set(cacheKey, sorted, 120);
+            return {
+              s: 'ok',
+              candles: sorted,
+              source: fetchedAnyFromNetwork ? 'fyers' : 'cache',
+              ...(hitDailyLimit ? { rateLimited: true } : {}),
+            };
+          }
         }
       } catch (err: any) {
         console.warn(`[fyers-client] FYERS API call failed:`, err?.message || err);
       }
     }
 
-    // Mock data fallback for developer experience
-    const mockBars = generateMockCandles(symbol, resolution, rangeFrom, rangeTo);
-    historyCache.set(cacheKey, mockBars, 30); // 30s cache for mock
-    return { s: 'ok', candles: mockBars, source: 'mock' };
+    // Mock data fallback for developer experience (or when daily API limit is exhausted)
+    const mockBars = generateMockCandles(symbol, resolution, rawFrom, rawTo);
+    historyCache.set(cacheKey, mockBars, hitDailyLimit ? 300 : 30);
+    return { s: 'ok', candles: mockBars, source: 'mock', ...(hitDailyLimit ? { rateLimited: true } : {}) };
   }
 }
 
