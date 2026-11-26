@@ -29,6 +29,7 @@ export class TickAggregator {
   private activeBars = new Map<string, VelaBar>();
   private listeners: BarUpdateCallback[] = [];
   private socketInstance: any = null;
+  private socketListenersAttached = false;
   private subscribedSymbols = new Set<string>();
   private mockIntervalTimer: NodeJS.Timeout | null = null;
   private lastPrices = new Map<string, number>();
@@ -130,41 +131,56 @@ export class TickAggregator {
     }
 
     try {
-      this.socketInstance = new fyersDataSocket(token);
+      const sock =
+        typeof fyersDataSocket.getInstance === 'function'
+          ? fyersDataSocket.getInstance(token)
+          : new fyersDataSocket(token);
 
-      this.socketInstance.on('connect', () => {
-        console.log('[TickAggregator] FYERS DataSocket connected successfully.');
-        if (this.mockIntervalTimer) {
-          clearInterval(this.mockIntervalTimer);
-          this.mockIntervalTimer = null;
-        }
-        if (this.subscribedSymbols.size > 0) {
-          this.socketInstance.subscribe(Array.from(this.subscribedSymbols));
-        }
-      });
+      if (sock && typeof sock === 'object' && 'accessToken' in sock) {
+        sock.accessToken = token;
+      }
+      this.socketInstance = sock;
 
-      this.socketInstance.on('message', (msg: any) => {
-        const tickData = msg?.SocketMessage || msg;
-        if (!tickData) return;
-        const tickList = Array.isArray(tickData) ? tickData : [tickData];
-        for (const t of tickList) {
-          if (t && t.symbol && typeof t.ltp === 'number') {
-            this.processTick(t.symbol, t.ltp, t.vol_traded_today || t.volume || 1, Date.now());
+      if (!this.socketListenersAttached) {
+        this.socketListenersAttached = true;
+
+        this.socketInstance.on('connect', () => {
+          console.log('[TickAggregator] FYERS DataSocket connected successfully.');
+          if (this.mockIntervalTimer) {
+            clearInterval(this.mockIntervalTimer);
+            this.mockIntervalTimer = null;
           }
-        }
-      });
+          if (this.subscribedSymbols.size > 0) {
+            this.socketInstance.subscribe(Array.from(this.subscribedSymbols));
+          }
+        });
 
-      this.socketInstance.on('error', (err: any) => {
-        console.warn('[TickAggregator] FYERS DataSocket error:', err);
-      });
+        this.socketInstance.on('message', (msg: any) => {
+          const tickData = msg?.SocketMessage || msg;
+          if (!tickData) return;
+          const tickList = Array.isArray(tickData) ? tickData : [tickData];
+          for (const t of tickList) {
+            if (t && t.symbol && typeof t.ltp === 'number') {
+              this.processTick(t.symbol, t.ltp, t.vol_traded_today || t.volume || 1, Date.now());
+            }
+          }
+        });
 
-      this.socketInstance.on('close', () => {
-        console.log('[TickAggregator] FYERS DataSocket closed.');
-      });
+        this.socketInstance.on('error', (err: any) => {
+          console.warn('[TickAggregator] FYERS DataSocket error:', err);
+        });
+
+        this.socketInstance.on('close', () => {
+          console.log('[TickAggregator] FYERS DataSocket closed.');
+        });
+      }
 
       this.socketInstance.connect();
     } catch (err) {
-      console.warn('[TickAggregator] Failed to initialize FYERS socket:', err);
+      console.warn('[TickAggregator] Failed to initialize FYERS socket (token may be expired):', err);
+      // Clean up failed socket reference so mock tick generator can continue fallback
+      this.socketInstance = null;
+      this.startMockTickGenerator();
     }
   }
 

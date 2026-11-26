@@ -33,7 +33,11 @@ export function createServerApp() {
   });
 
   // Auth: status
-  app.get('/api/auth/status', (_req, res) => {
+  app.get('/api/auth/status', async (_req, res) => {
+    // If currently marked authenticated, verify token validity
+    if (fyersService.isAuthenticated()) {
+      await fyersService.validateToken();
+    }
     res.json({
       configured: fyersService.isConfigured(),
       authenticated: fyersService.isAuthenticated(),
@@ -76,8 +80,9 @@ export function createServerApp() {
           <div style="background: #1e293b; padding: 2rem; border-radius: 8px; border: 1px solid #334155; text-align: center; max-width: 480px;">
             <h2 style="color: #22c55e;">Authentication Successful!</h2>
             <p>Your FYERS API v3 access token has been generated and securely stored.</p>
-            <p>You can return to the Vela Chart Terminal.</p>
-            <a href="http://localhost:5190" style="display: inline-block; margin-top: 1rem; padding: 0.6rem 1.2rem; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px;">Return to Chart</a>
+            <p>Redirecting back to Trading Desk Terminal...</p>
+            <a href="http://localhost:5190/terminal.html" style="display: inline-block; margin-top: 1rem; padding: 0.6rem 1.2rem; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px;">Return to Chart</a>
+            <script>setTimeout(() => { window.location.href = 'http://localhost:5190/terminal.html'; }, 800);</script>
           </div>
         </body>
         </html>

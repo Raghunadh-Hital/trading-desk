@@ -692,21 +692,21 @@ export class VelaWorkspace {
         this.indicatorPicker =
             opts.indicatorPicker !== false && !this.indicatorsOverride && topbarHas(this.topbarComp, 'indicators')
                 ? new IndicatorPicker({
-                      host: this.root,
-                      i18n: this.localeState,
-                      library: () => this.active.libraryRows(),
-                      onChart: () => this.active.onChartRows(),
-                      onAdd: (i) => {
-                          if (this.active.addFromLibrary(i)) this.indicatorPicker?.close();
-                      },
-                      onRemove: (i) => this.active.removeFromChart(i),
-                      onOpenChange: (open) => {
-                          // Same rule as the symbol search: the renderer's in-chart dialogs never see
-                          // an outside-dismiss from a topbar dialog — close them on every cell.
-                          if (open) for (const cell of this.cells()) cell.chart.renderer.closeDialogs();
-                          this.trackDialog(open);
-                      },
-                  })
+                    host: this.root,
+                    i18n: this.localeState,
+                    library: () => this.active.libraryRows(),
+                    onChart: () => this.active.onChartRows(),
+                    onAdd: (i) => {
+                        if (this.active.addFromLibrary(i)) this.indicatorPicker?.close();
+                    },
+                    onRemove: (i) => this.active.removeFromChart(i),
+                    onOpenChange: (open) => {
+                        // Same rule as the symbol search: the renderer's in-chart dialogs never see
+                        // an outside-dismiss from a topbar dialog — close them on every cell.
+                        if (open) for (const cell of this.cells()) cell.chart.renderer.closeDialogs();
+                        this.trackDialog(open);
+                    },
+                })
                 : null;
         const picker = this.indicatorPicker;
         this.tfQuick = new TimeframeQuick({
@@ -866,43 +866,43 @@ export class VelaWorkspace {
         // chart after every press so drawing/chart shortcuts keep working.
         this.drawToolbar = toolbarHost
             ? new DrawingToolbar(
-                  toolbarHost,
-                  resolveTheme(opts.theme),
-                  (type) => {
-                      this.active.chart.drawings.setTool(type);
-                      this.refocusActive();
-                  },
-                  (mode) => {
-                      this.active.chart.drawings.setSnapMode(mode);
-                      this.refocusActive();
-                  },
-                  () => {
-                      const d = this.active.chart.drawings;
-                      d.setMode(d.getMode() === 'measure' ? null : 'measure');
-                      this.refocusActive();
-                  },
-                  () => {
-                      const d = this.active.chart.drawings;
-                      d.setMode(d.getMode() === 'eraser' ? null : 'eraser');
-                      this.refocusActive();
-                  },
-                  // No refocus on a star: the flyout stays open for more browsing.
-                  (type, on) => this.active.chart.drawings.setFavorite(type, on),
-                  (on) => {
-                      this.active.chart.drawings.setStayMode(on);
-                      this.refocusActive();
-                  },
-                  {
-                      dock: 'static',
-                      i18n: () => this.localeState,
-                      // Drawings sync is a WORKSPACE link (same model as the layout
-                      // dropdown's switches) — the bar only hosts its toggle.
-                      onDrawingsSync: (on) => {
-                          this.sync.set('drawings', on);
-                          this.refocusActive();
-                      },
-                  },
-              )
+                toolbarHost,
+                resolveTheme(opts.theme),
+                (type) => {
+                    this.active.chart.drawings.setTool(type);
+                    this.refocusActive();
+                },
+                (mode) => {
+                    this.active.chart.drawings.setSnapMode(mode);
+                    this.refocusActive();
+                },
+                () => {
+                    const d = this.active.chart.drawings;
+                    d.setMode(d.getMode() === 'measure' ? null : 'measure');
+                    this.refocusActive();
+                },
+                () => {
+                    const d = this.active.chart.drawings;
+                    d.setMode(d.getMode() === 'eraser' ? null : 'eraser');
+                    this.refocusActive();
+                },
+                // No refocus on a star: the flyout stays open for more browsing.
+                (type, on) => this.active.chart.drawings.setFavorite(type, on),
+                (on) => {
+                    this.active.chart.drawings.setStayMode(on);
+                    this.refocusActive();
+                },
+                {
+                    dock: 'static',
+                    i18n: () => this.localeState,
+                    // Drawings sync is a WORKSPACE link (same model as the layout
+                    // dropdown's switches) — the bar only hosts its toggle.
+                    onDrawingsSync: (on) => {
+                        this.sync.set('drawings', on);
+                        this.refocusActive();
+                    },
+                },
+            )
             : null;
         this.drawToolbar?.setDefinition(this.toolbarDef);
         this.drawToolbar?.setVisible(true);
@@ -912,19 +912,19 @@ export class VelaWorkspace {
         this.bottombar =
             opts.bottombar !== false
                 ? new Bottombar(this.root, {
-                      i18n: this.localeState,
-                      timezone: this.timezone,
-                      clock: this.clock,
-                      onRange: (preset) => {
-                          this.active.applyRange(preset);
-                          this.bottombar?.setActiveRange(preset.id);
-                      },
-                      onTimezone: (zone) => this.setTimezone(zone),
-                      // RTH/ETH acts on the ACTIVE cell (like the range chips): sessions
-                      // are a per-chart market dimension, not a shell preference.
-                      onSession: (session) => this.active.setSession(session),
-                      onSettingsClick: () => this.active.chart.renderer.openSettings(),
-                  })
+                    i18n: this.localeState,
+                    timezone: this.timezone,
+                    clock: this.clock,
+                    onRange: (preset) => {
+                        this.active.applyRange(preset);
+                        this.bottombar?.setActiveRange(preset.id);
+                    },
+                    onTimezone: (zone) => this.setTimezone(zone),
+                    // RTH/ETH acts on the ACTIVE cell (like the range chips): sessions
+                    // are a per-chart market dimension, not a shell preference.
+                    onSession: (session) => this.active.setSession(session),
+                    onSettingsClick: () => this.active.chart.renderer.openSettings(),
+                })
                 : null;
         // Strips docked under the bottom bar (`dockStrip(el, { position: 'below-bottombar' })`).
         this.stripsBelowEl = doc.createElement('div');
@@ -937,24 +937,24 @@ export class VelaWorkspace {
         this.mobileBar =
             opts.bottombar !== false
                 ? new MobileBar(this.root, {
-                      i18n: this.localeState,
-                      symbol: '',
-                      timeframe: '60',
-                      onSymbolClick: () => this.symbolPicker.open(),
-                      onTimeframeClick: () => this.openTimeframeDrawer(),
-                      // Same visibility truth as the desktop bar: composition-hidden
-                      // indicators lose their mobile stop too; an override takes it over.
-                      ...(topbarHas(this.topbarComp, 'indicators') && (picker || this.indicatorsOverride)
-                          ? { onIndicatorsClick: this.indicatorsOverride ? () => this.runOverride(this.indicatorsOverride!) : () => picker!.open() }
-                          : {}),
-                      getContext: () => this.context(),
-                      ...(this.drawingsEnabled ? { onDrawingsClick: () => this.openDrawingsDrawer() } : {}),
-                      // Multi-chart only: the stop that isolates the ACTIVE chart (the
-                      // per-cell hover cluster has no cursor to reveal it on mobile).
-                      ...(this.monoLayout ? {} : { onMaximizeClick: () => this.toggleMobileMaximize() }),
-                      onMoreClick: () => this.openMoreDrawer(),
-                      onSettingsClick: () => this.active.chart.renderer.openSettings(),
-                  })
+                    i18n: this.localeState,
+                    symbol: '',
+                    timeframe: '60',
+                    onSymbolClick: () => this.symbolPicker.open(),
+                    onTimeframeClick: () => this.openTimeframeDrawer(),
+                    // Same visibility truth as the desktop bar: composition-hidden
+                    // indicators lose their mobile stop too; an override takes it over.
+                    ...(topbarHas(this.topbarComp, 'indicators') && (picker || this.indicatorsOverride)
+                        ? { onIndicatorsClick: this.indicatorsOverride ? () => this.runOverride(this.indicatorsOverride!) : () => picker!.open() }
+                        : {}),
+                    getContext: () => this.context(),
+                    ...(this.drawingsEnabled ? { onDrawingsClick: () => this.openDrawingsDrawer() } : {}),
+                    // Multi-chart only: the stop that isolates the ACTIVE chart (the
+                    // per-cell hover cluster has no cursor to reveal it on mobile).
+                    ...(this.monoLayout ? {} : { onMaximizeClick: () => this.toggleMobileMaximize() }),
+                    onMoreClick: () => this.openMoreDrawer(),
+                    onSettingsClick: () => this.active.chart.renderer.openSettings(),
+                })
                 : null;
         // One pill for the whole grid — rebound to the active cell on every projection.
         this.drawingPill = this.drawingsEnabled ? new DrawingPill(this.gridEl) : null;
@@ -3228,9 +3228,9 @@ export class VelaWorkspace {
         this.alertsMenu?.destroy();
         const items = this.alerts.length
             ? this.alerts.map((a, i) => ({
-                  id: String(i),
-                  label: sliceGraphemes(this.t(TEXT.alertRow, { source: a.source, time: eventTimeText(a.time, this.localeState), title: a.title, message: a.message }), ALERT_ROW_MAX),
-              }))
+                id: String(i),
+                label: sliceGraphemes(this.t(TEXT.alertRow, { source: a.source, time: eventTimeText(a.time, this.localeState), title: a.title, message: a.message }), ALERT_ROW_MAX),
+            }))
             : [{ id: 'none', label: this.t(TEXT.noAlerts), disabled: true }];
         this.alertsMenu = new DropdownMenu({
             host: this.root,

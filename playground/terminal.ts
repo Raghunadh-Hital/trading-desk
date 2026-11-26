@@ -353,7 +353,7 @@ function focusCMP(): void {
 const focusCmpBtn = document.getElementById('focus-cmp-btn');
 focusCmpBtn?.addEventListener('click', focusCMP);
 
-// 3. Setup FYERS Auth Status Check and Modal
+// 3. Setup FYERS Auth Status Check, Modal & Fullscreen Login Screen
 const authBtn = document.getElementById('fyers-auth-btn')!;
 const statusDot = document.getElementById('status-indicator')!;
 const statusLabel = document.getElementById('status-label')!;
@@ -362,39 +362,61 @@ const closeModalBtn = document.getElementById('close-modal-btn')!;
 const saveTokenBtn = document.getElementById('save-token-btn')!;
 const manualTokenInput = document.getElementById('manual-token-input') as HTMLInputElement;
 
+const loginScreen = document.getElementById('login-screen')!;
+const screenTokenInput = document.getElementById('screen-token-input') as HTMLInputElement;
+const screenTokenBtn = document.getElementById('screen-token-btn')!;
+
+function setLoginScreenVisible(visible: boolean) {
+    if (loginScreen) {
+        if (visible) {
+            loginScreen.classList.add('visible');
+        } else {
+            loginScreen.classList.remove('visible');
+        }
+    }
+}
+
+let consecutiveOfflineCount = 0;
+
 async function checkFyersStatus() {
     try {
         const res = await fetch('http://127.0.0.1:5000/api/auth/status');
         if (res.ok) {
             const data = await res.json();
             if (data.authenticated) {
+                consecutiveOfflineCount = 0;
                 statusDot.className = 'status-dot online';
                 statusLabel.textContent = 'FYERS: Authenticated';
-            } else if (data.configured) {
-                statusDot.className = 'status-dot';
-                statusLabel.textContent = 'FYERS: Click to Login';
+                setLoginScreenVisible(false);
             } else {
                 statusDot.className = 'status-dot';
-                statusLabel.textContent = 'FYERS: Offline / Demo Mode';
+                statusLabel.textContent = 'FYERS: Login Required (Session Expired)';
+                setLoginScreenVisible(true);
+            }
+        } else {
+            consecutiveOfflineCount++;
+            if (consecutiveOfflineCount >= 3) {
+                statusDot.className = 'status-dot';
+                statusLabel.textContent = 'FYERS: Service Unavailable';
+                setLoginScreenVisible(true);
             }
         }
     } catch {
-        statusDot.className = 'status-dot';
-        statusLabel.textContent = 'FYERS: Local Proxy Offline (Demo Mode)';
+        consecutiveOfflineCount++;
+        // Don't flash modal on a single transient network glitch
+        if (consecutiveOfflineCount >= 3) {
+            statusDot.className = 'status-dot';
+            statusLabel.textContent = 'FYERS: Local Proxy Offline';
+            setLoginScreenVisible(true);
+        }
     }
 }
 
 void checkFyersStatus();
-setInterval(checkFyersStatus, 15000);
+setInterval(checkFyersStatus, 10000);
 
-authBtn.addEventListener('click', () => {
-    authModal.classList.add('open');
-});
-closeModalBtn.addEventListener('click', () => {
-    authModal.classList.remove('open');
-});
-saveTokenBtn.addEventListener('click', async () => {
-    const token = manualTokenInput.value.trim();
+async function submitToken(tokenStr: string) {
+    const token = tokenStr.trim();
     if (!token) return;
     try {
         const res = await fetch('http://127.0.0.1:5000/api/auth/token', {
@@ -403,12 +425,27 @@ saveTokenBtn.addEventListener('click', async () => {
             body: JSON.stringify({ token }),
         });
         if (res.ok) {
-            authModal.classList.remove('open');
-            void checkFyersStatus();
+            authModal?.classList.remove('open');
+            await checkFyersStatus();
+            // Reload the chart market so fresh data immediately loads
+            void ws.chart.setMarket({ symbol: ws.chart.symbol, timeframe: ws.chart.timeframe });
         }
     } catch (err) {
         alert(`Failed to save token: ${err}`);
     }
+}
+
+authBtn.addEventListener('click', () => {
+    authModal.classList.add('open');
+});
+closeModalBtn.addEventListener('click', () => {
+    authModal.classList.remove('open');
+});
+saveTokenBtn.addEventListener('click', () => {
+    void submitToken(manualTokenInput.value);
+});
+screenTokenBtn?.addEventListener('click', () => {
+    void submitToken(screenTokenInput.value);
 });
 
 // 4. Register Pine Script Language in Monaco

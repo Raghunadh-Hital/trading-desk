@@ -208,6 +208,119 @@
             #auth-modal.open {
                 display: flex;
             }
+
+            /* Fullscreen Login Screen (Shown when Token is Expired or Missing) */
+            #login-screen {
+                display: none;
+                position: fixed;
+                inset: 48px 0 0 0;
+                background: #090d16;
+                z-index: 90;
+                align-items: center;
+                justify-content: center;
+                flex-direction: column;
+            }
+            #login-screen.visible {
+                display: flex;
+            }
+            .login-card {
+                background: #151d2f;
+                border: 1px solid #28354e;
+                border-radius: 12px;
+                padding: 36px 32px;
+                width: 480px;
+                max-width: 92vw;
+                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75);
+                text-align: center;
+            }
+            .login-card h2 {
+                margin: 0 0 8px;
+                font-size: 22px;
+                color: #fff;
+                font-weight: 700;
+            }
+            .login-card .subtitle {
+                font-size: 13px;
+                color: #94a3b8;
+                line-height: 1.6;
+                margin: 0 0 24px;
+            }
+            .login-card .warning-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                background: rgba(239, 68, 68, 0.15);
+                border: 1px solid rgba(239, 68, 68, 0.3);
+                color: #fca5a5;
+                font-size: 12px;
+                font-weight: 500;
+                padding: 6px 12px;
+                border-radius: 6px;
+                margin-bottom: 20px;
+            }
+            .login-btn-primary {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
+                width: 100%;
+                box-sizing: border-box;
+                padding: 12px 18px;
+                background: #2563eb;
+                color: #fff;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: 600;
+                text-decoration: none;
+                cursor: pointer;
+                border: none;
+                transition: background 150ms ease;
+            }
+            .login-btn-primary:hover {
+                background: #1d4ed8;
+            }
+            .login-divider {
+                display: flex;
+                align-items: center;
+                margin: 20px 0;
+                color: #475569;
+                font-size: 12px;
+            }
+            .login-divider::before,
+            .login-divider::after {
+                content: '';
+                flex: 1;
+                border-bottom: 1px solid #1e293b;
+            }
+            .login-divider span {
+                padding: 0 10px;
+            }
+            .token-input-row {
+                display: flex;
+                gap: 8px;
+            }
+            .token-input-row input {
+                flex: 1;
+                background: #0b101b;
+                border: 1px solid #28354e;
+                border-radius: 6px;
+                padding: 8px 12px;
+                color: #fff;
+                font-size: 12px;
+            }
+            .token-input-row button {
+                padding: 8px 14px;
+                background: #334155;
+                color: #fff;
+                border: none;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: 600;
+                cursor: pointer;
+            }
+            .token-input-row button:hover {
+                background: #475569;
+            }
             .modal-card {
                 background: var(--surface);
                 border: 1px solid var(--border);
@@ -334,6 +447,38 @@
                 </div>
                 <div id="monaco-container"></div>
                 <div id="editor-console">Ready</div>
+            </div>
+        </div>
+
+        <!-- Fullscreen Login Screen when Session is Expired or Offline -->
+        <div id="login-screen">
+            <div class="login-card">
+                <div class="warning-badge">
+                    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M8 1v9M8 13.5v.5M7 1h2"/>
+                    </svg>
+                    <span>FYERS Session Expired or Not Authenticated</span>
+                </div>
+                <h2>Connect Your FYERS Account</h2>
+                <p class="subtitle">
+                    FYERS daily access tokens expire every 24 hours. Please log in with your credentials to stream real-time Indian stock market data and historical candles.
+                </p>
+
+                <a href="http://127.0.0.1:5000/api/auth/login" class="login-btn-primary">
+                    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-3M6 11l3-3-3-3M1 8h8"/>
+                    </svg>
+                    <span>Log in with FYERS Web (1-Click)</span>
+                </a>
+
+                <div class="login-divider">
+                    <span>OR ENTER TOKEN MANUALLY</span>
+                </div>
+
+                <div class="token-input-row">
+                    <input id="screen-token-input" type="text" placeholder="Paste your 24h FYERS access token here…" />
+                    <button id="screen-token-btn">Connect</button>
+                </div>
             </div>
         </div>
 
