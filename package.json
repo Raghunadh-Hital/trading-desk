@@ -109,13 +109,73 @@
     "lint": "eslint . && node scripts/lint-css.mjs",
     "playground": "vite",
     "server": "npm run start --prefix server",
+    "electron:dev": "electron electron/main.cjs",
+    "build:desktop": "vite build --base=./ && npm run build --prefix server",
+    "electron:build": "npm run build:desktop && electron-builder --win",
     "i18n:extract": "node scripts/i18n-extract.mjs",
     "i18n:check": "node scripts/i18n-extract.mjs --check",
     "lint:css": "node scripts/lint-css.mjs",
     "new-component": "node packages/vela-ui/scripts/new-component.mjs"
   },
+  "build": {
+    "afterPack": "scripts/afterPack.cjs",
+    "extraMetadata": {
+      "main": "electron/main.cjs"
+    },
+    "appId": "com.luxalgo.vela.tradingdesk",
+    "productName": "Trading Desk",
+    "icon": "build/icon.png",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist-desktop/**/*",
+      "electron/**/*",
+      "server/dist/**/*",
+      "server/package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist-desktop",
+        "to": "dist-desktop"
+      },
+      {
+        "from": "server",
+        "to": "server",
+        "filter": [
+          "dist/**/*",
+          "package.json"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
   "devDependencies": {
     "@luxalgo/vela-pinets": "^0.3.5",
+    "electron": "^45.5.0",
+    "electron-builder": "^26.18.0",
     "eslint": "^9.0.0",
     "jsdom": "^29.1.1",
     "lightningcss": "^1.33.0",

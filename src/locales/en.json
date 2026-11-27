@@ -18,6 +18,7 @@
     "chart.indicatorSettings.propertiesTab": "Properties",
     "chart.indicatorSettings.resetDefaults": "Reset defaults",
     "chart.indicatorSettings.selectSymbol": "Select symbol…",
+    "chart.indicatorSettings.styleTab": "Style",
     "chart.indicatorSettings.timeframe.chart": "Chart",
     "chart.indicatorSettings.timeframe.day": "1 day",
     "chart.indicatorSettings.timeframe.hours": "{count, plural, one {# hour} other {# hours}}",

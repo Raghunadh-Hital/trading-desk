@@ -31,13 +31,12 @@ export class TickAggregator {
   private socketInstance: any = null;
   private socketListenersAttached = false;
   private subscribedSymbols = new Set<string>();
-  private mockIntervalTimer: NodeJS.Timeout | null = null;
   private lastPrices = new Map<string, number>();
   private lastFyersTickBySymbol = new Map<string, number>();
   private lastVolTradedToday = new Map<string, number>();
 
   constructor() {
-    this.startMockTickGenerator();
+    // Only real FYERS WebSocket ticks are processed. No fake or randomized simulation.
   }
 
   public subscribeSymbol(symbol: string): void {
@@ -208,55 +207,11 @@ export class TickAggregator {
       if (/expired token|failed to decode jwt/i.test(msg)) {
         fyersService.logout();
       }
-      // Clean up failed socket reference so mock tick generator can continue fallback
       this.socketInstance = null;
-      this.startMockTickGenerator();
     }
-  }
-
-  private startMockTickGenerator(): void {
-    if (this.mockIntervalTimer) return;
-
-    this.mockIntervalTimer = setInterval(() => {
-      if (this.subscribedSymbols.size === 0) return;
-
-      const now = Date.now();
-      for (const symbol of this.subscribedSymbols) {
-        // If real FYERS ticks arrived for this symbol within the last 1.2s, let live data stream
-        const lastTick = this.lastFyersTickBySymbol.get(symbol) ?? 0;
-        if (now - lastTick < 1200) {
-          continue;
-        }
-
-        let prev = this.lastPrices.get(symbol);
-        if (!prev || prev <= 0) {
-          // Check if symbol master has a base price
-          const known = symbolService.getAllSymbols().find((s) => s.symbol === symbol);
-          if (known && known.basePrice > 0) {
-            prev = known.basePrice;
-            this.lastPrices.set(symbol, prev);
-          } else {
-            continue;
-          }
-        }
-
-        // Indian exchange minimum tick size is 0.05 Rs (5 paise)
-        const tickSize = 0.05;
-        const rand = Math.random();
-        const direction = rand > 0.51 ? 1 : rand < 0.49 ? -1 : 0;
-        const steps = Math.floor(Math.random() * 2) + 1; // 1 to 2 ticks (0.05 to 0.10)
-        const newPrice = Math.round((prev + direction * steps * tickSize) * 100) / 100;
-        const vol = Math.floor(Math.random() * 20) + 1;
-        this.processTick(symbol, newPrice, vol);
-      }
-    }, 500);
   }
 
   public destroy(): void {
-    if (this.mockIntervalTimer) {
-      clearInterval(this.mockIntervalTimer);
-      this.mockIntervalTimer = null;
-    }
     if (this.socketInstance) {
       try {
         this.socketInstance.close();

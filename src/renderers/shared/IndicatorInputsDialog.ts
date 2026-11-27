@@ -103,8 +103,6 @@ export class IndicatorInputsDialog {
     private choicePop: Popover | null = null;
     private calendarPop: Popover | null = null;
     private calendarAnchor: HTMLElement | null = null;
-    private commitTimer: ReturnType<typeof setTimeout> | null = null;
-    private readonly pendingChanges = new Map<string, InputsUIChange>();
 
     constructor(private readonly host: IndicatorDialogHost) {}
 
@@ -305,7 +303,6 @@ export class IndicatorInputsDialog {
     }
 
     close(): void {
-        this.flushPendingCommits();
         document.removeEventListener('keydown', this.onDialogKey);
         closeOpenPopovers();
         this.refreshVisibility = null;
@@ -326,7 +323,6 @@ export class IndicatorInputsDialog {
 
     /** Restore every input and prop to its open-time value (re-running the indicator), then close. */
     private revertAndClose(): void {
-        this.cancelPendingCommits();
         const row = this.row;
         const snap = this.snapshot;
         if (row && snap) {
@@ -366,7 +362,6 @@ export class IndicatorInputsDialog {
      *  rebuild-after-reset move as the chart-settings dialog. The open-time snapshot
      *  survives the rebuild, so Cancel after a reset still reverts the whole session. */
     private resetToDefaults(): void {
-        this.cancelPendingCommits();
         const row = this.row;
         if (!row) return;
         const snap = this.snapshot;
@@ -390,54 +385,11 @@ export class IndicatorInputsDialog {
         if (propSnap) this.propSnapshot = propSnap;
     }
 
-    /** Flush any debounced input changes immediately to the host. */
-    private flushPendingCommits(): void {
-        if (this.commitTimer) {
-            clearTimeout(this.commitTimer);
-            this.commitTimer = null;
-        }
-        if (this.pendingChanges.size > 0) {
-            const changes = [...this.pendingChanges.values()];
-            this.pendingChanges.clear();
-            for (const c of changes) {
-                this.host.onChange?.(c);
-            }
-        }
-    }
-
-    /** Cancel any pending debounced input changes without notifying the host. */
-    private cancelPendingCommits(): void {
-        if (this.commitTimer) {
-            clearTimeout(this.commitTimer);
-            this.commitTimer = null;
-        }
-        this.pendingChanges.clear();
-    }
-
-    /** Write one edit through: store it, notify the host after a 1000ms debounce, and re-apply the `when` gates. */
-    private commit(row: IndicatorDialogRow, decl: DialogDecl, value: InputValue, immediate = false): void {
+    /** Write one edit through: store it, notify the host, and re-apply the `when` gates. */
+    private commit(row: IndicatorDialogRow, decl: DialogDecl, value: InputValue): void {
         bagOf(row, decl)[decl.key] = value;
+        this.host.onChange?.({ indicatorId: row.id, key: decl.key, value, ...(decl.prop ? { kind: 'prop' as const } : {}) });
         this.refreshVisibility?.();
-
-        const changeKey = `${row.id}:${decl.prop ? 'prop' : 'input'}:${decl.key}`;
-        const change: InputsUIChange = {
-            indicatorId: row.id,
-            key: decl.key,
-            value,
-            ...(decl.prop ? { kind: 'prop' as const } : {})
-        };
-
-        if (immediate) {
-            this.pendingChanges.delete(changeKey);
-            this.host.onChange?.(change);
-            return;
-        }
-
-        this.pendingChanges.set(changeKey, change);
-        if (this.commitTimer) clearTimeout(this.commitTimer);
-        this.commitTimer = setTimeout(() => {
-            this.flushPendingCommits();
-        }, 1000);
     }
 
     /** One settings row (or several `inline=` inputs) placed into a section's grid. */

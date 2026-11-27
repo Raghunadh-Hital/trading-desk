@@ -1,5 +1,9 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { velaUiSource } from './scripts/vela-ui-source.mjs';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Playground server: `npm run playground` serves playground/ with Vela imported STRAIGHT
@@ -10,5 +14,15 @@ import { velaUiSource } from './scripts/vela-ui-source.mjs';
 export default defineConfig({
     root: 'playground',
     server: { port: 5190, strictPort: true },
+    build: {
+        outDir: path.resolve(__dirname, 'dist-desktop'),
+        emptyOutDir: true,
+        rollupOptions: {
+            input: {
+                main: path.resolve(__dirname, 'playground/index.html'),
+                terminal: path.resolve(__dirname, 'playground/terminal.html'),
+            },
+        },
+    },
     plugins: [velaUiSource()],
 });

@@ -136,5 +136,44 @@ describe('Vela FYERS Server Proxy', () => {
         }
       );
     });
+
+    it('configures credentials dynamically and logs out', async () => {
+      const app = createServerApp();
+      let configureResult: any = null;
+      await (app as any).handle(
+        {
+          method: 'POST',
+          url: '/api/auth/configure',
+          headers: { 'content-type': 'application/json' },
+          body: { appId: 'TEST_APP_123', secretKey: 'SECRET_456' },
+        },
+        {
+          statusCode: 200,
+          setHeader: () => {},
+          json: (data: any) => {
+            configureResult = data;
+          },
+        }
+      );
+      expect(configureResult).toEqual(
+        expect.objectContaining({
+          success: true,
+          configured: true,
+        })
+      );
+
+      let logoutResult: any = null;
+      await (app as any).handle(
+        { method: 'POST', url: '/api/auth/logout', headers: {} },
+        {
+          statusCode: 200,
+          setHeader: () => {},
+          json: (data: any) => {
+            logoutResult = data;
+          },
+        }
+      );
+      expect(logoutResult).toEqual({ success: true, message: 'Logged out successfully' });
+    });
   });
 });

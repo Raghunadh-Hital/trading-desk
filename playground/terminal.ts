@@ -166,7 +166,7 @@ const ws = new VelaWorkspace('#chart', {
     symbol: 'NSE:NIFTY50-INDEX',
     timeframe: '15',
     live: true,
-    theme: 'dark',
+    theme: 'light',
     autofocus: true,
     persist: 'vela-indian-terminal',
     timezone: 'Asia/Kolkata',
@@ -682,9 +682,123 @@ const closeModalBtn = document.getElementById('close-modal-btn')!;
 const saveTokenBtn = document.getElementById('save-token-btn')!;
 const manualTokenInput = document.getElementById('manual-token-input') as HTMLInputElement;
 
+// Onboarding & Authentication Controls
 const loginScreen = document.getElementById('login-screen')!;
-const screenTokenInput = document.getElementById('screen-token-input') as HTMLInputElement;
-const screenTokenBtn = document.getElementById('screen-token-btn')!;
+const screenStatusBadge = document.getElementById('screen-status-badge');
+const screenStatusText = document.getElementById('screen-status-text');
+
+// Step 1 Elements
+const step1Card = document.getElementById('step1-card');
+const step1Tag = document.getElementById('step1-tag');
+const openFyersDashBtn = document.getElementById('open-fyers-dash-btn');
+const step1UserIp = document.getElementById('step1-user-ip');
+const step1CopyIpBtn = document.getElementById('step1-copy-ip-btn');
+const step1CopyRedirectBtn = document.getElementById('step1-copy-redirect-btn');
+
+// Step 2 Elements
+const step2Card = document.getElementById('step2-card');
+const step2Tag = document.getElementById('step2-tag');
+const screenAppIdInput = document.getElementById('screen-app-id') as HTMLInputElement | null;
+const screenSecretKeyInput = document.getElementById('screen-secret-key') as HTMLInputElement | null;
+const screenSaveCredsBtn = document.getElementById('screen-save-creds-btn') as HTMLButtonElement | null;
+const step2Feedback = document.getElementById('step2-feedback');
+
+// Step 3 Elements
+const step3Card = document.getElementById('step3-card');
+const step3Tag = document.getElementById('step3-tag');
+const screenLoginBtn = document.getElementById('screen-login-btn') as HTMLButtonElement | null;
+const screenWaitingNotice = document.getElementById('screen-waiting-notice');
+const reopenBrowserBtn = document.getElementById('reopen-browser-btn');
+const oauthLoginLink = document.getElementById('oauth-login-link');
+
+// Manual Token Fallback
+const screenTokenInput = document.getElementById('screen-token-input') as HTMLInputElement | null;
+const screenTokenBtn = document.getElementById('screen-token-btn');
+
+function openExternalUrl(url: string) {
+    const desktopApi = (window as unknown as { velaDesktop?: { openExternal?: (url: string) => void } }).velaDesktop;
+    if (desktopApi?.openExternal) {
+        desktopApi.openExternal(url);
+    } else {
+        window.open(url, '_blank');
+    }
+}
+
+function openFyersOAuthLogin(e?: Event) {
+    if (e) e.preventDefault();
+    const loginUrl = 'http://127.0.0.1:5000/api/auth/login';
+    if (screenWaitingNotice) {
+        screenWaitingNotice.style.display = 'block';
+    }
+    openExternalUrl(loginUrl);
+}
+
+screenLoginBtn?.addEventListener('click', openFyersOAuthLogin);
+oauthLoginLink?.addEventListener('click', openFyersOAuthLogin);
+reopenBrowserBtn?.addEventListener('click', openFyersOAuthLogin);
+
+openFyersDashBtn?.addEventListener('click', () => {
+    openExternalUrl('https://fyers.in/web/api-dashboard/user-apps');
+});
+
+// Auto-detect User's Public IP for FYERS Primary IP address field
+async function detectUserIp() {
+    if (!step1UserIp) return;
+    try {
+        const res = await fetch('https://api.ipify.org?format=json');
+        if (res.ok) {
+            const data = (await res.json()) as { ip?: string };
+            if (data.ip && step1UserIp) {
+                step1UserIp.textContent = data.ip;
+                step1UserIp.setAttribute('data-ip', data.ip);
+            }
+        }
+    } catch {
+        if (step1UserIp) {
+            step1UserIp.textContent = 'Check your public IP via whatismyip.com';
+        }
+    }
+}
+
+void detectUserIp();
+
+step1CopyIpBtn?.addEventListener('click', () => {
+    const ip = step1UserIp?.getAttribute('data-ip') || step1UserIp?.textContent?.trim() || '';
+    if (ip && !ip.startsWith('Check') && !ip.startsWith('Detecting')) {
+        void navigator.clipboard.writeText(ip).then(() => {
+            if (step1CopyIpBtn) {
+                const originalText = step1CopyIpBtn.textContent;
+                step1CopyIpBtn.textContent = 'Copied!';
+                step1CopyIpBtn.style.background = '#10b981';
+                setTimeout(() => {
+                    step1CopyIpBtn.textContent = originalText;
+                    step1CopyIpBtn.style.background = '';
+                }, 2000);
+            }
+        });
+    } else {
+        openExternalUrl('https://api.ipify.org');
+    }
+});
+
+step1CopyRedirectBtn?.addEventListener('click', () => {
+    const url = 'http://127.0.0.1:5000/api/auth/callback';
+    void navigator.clipboard.writeText(url).then(() => {
+        if (step1CopyRedirectBtn) {
+            const originalText = step1CopyRedirectBtn.textContent;
+            step1CopyRedirectBtn.textContent = 'Copied!';
+            step1CopyRedirectBtn.style.background = '#10b981';
+            step1CopyRedirectBtn.style.borderColor = '#10b981';
+            setTimeout(() => {
+                step1CopyRedirectBtn.textContent = originalText;
+                step1CopyRedirectBtn.style.background = '';
+                step1CopyRedirectBtn.style.borderColor = '';
+            }, 2000);
+        }
+    }).catch(() => {
+        alert(`Redirect URL:\n${url}`);
+    });
+});
 
 function setLoginScreenVisible(visible: boolean) {
     if (loginScreen) {
@@ -707,10 +821,46 @@ async function checkFyersStatus() {
                 consecutiveOfflineCount = 0;
                 statusDot.className = 'status-dot online';
                 statusLabel.textContent = 'FYERS: Authenticated';
+                if (screenWaitingNotice) screenWaitingNotice.style.display = 'none';
                 setLoginScreenVisible(false);
             } else {
                 statusDot.className = 'status-dot';
-                statusLabel.textContent = 'FYERS: Login Required (Session Expired)';
+                if (!data.configured) {
+                    statusLabel.textContent = 'FYERS: Credentials Not Configured';
+                    if (screenStatusText) screenStatusText.textContent = 'Step 1 & 2: Configure FYERS API Credentials';
+                    screenStatusBadge?.classList.remove('configured');
+                    
+                    // Step 2 needs action
+                    step2Card?.classList.remove('completed');
+                    if (step2Tag) step2Tag.textContent = 'Action Required';
+
+                    // Step 3 locked
+                    step3Card?.classList.add('locked');
+                    step3Card?.classList.remove('active');
+                    if (step3Tag) step3Tag.textContent = 'Awaiting Step 2';
+                    if (screenLoginBtn) {
+                        screenLoginBtn.setAttribute('disabled', 'true');
+                        screenLoginBtn.classList.add('disabled');
+                    }
+                } else {
+                    statusLabel.textContent = 'FYERS: Login Required (Session Expired)';
+                    if (screenStatusText) screenStatusText.textContent = 'Step 3: Ready to Log in with FYERS';
+                    screenStatusBadge?.classList.add('configured');
+
+                    // Step 1 & 2 completed
+                    if (step1Tag) step1Tag.textContent = 'Configured ✓';
+                    step2Card?.classList.add('completed');
+                    if (step2Tag) step2Tag.textContent = 'Saved ✓';
+
+                    // Step 3 unlocked and active
+                    step3Card?.classList.remove('locked');
+                    step3Card?.classList.add('active');
+                    if (step3Tag) step3Tag.textContent = 'Ready to Connect';
+                    if (screenLoginBtn) {
+                        screenLoginBtn.removeAttribute('disabled');
+                        screenLoginBtn.classList.remove('disabled');
+                    }
+                }
                 setLoginScreenVisible(true);
             }
         } else {
@@ -723,7 +873,6 @@ async function checkFyersStatus() {
         }
     } catch {
         consecutiveOfflineCount++;
-        // Don't flash modal on a single transient network glitch
         if (consecutiveOfflineCount >= 3) {
             statusDot.className = 'status-dot';
             statusLabel.textContent = 'FYERS: Local Proxy Offline';
@@ -733,7 +882,101 @@ async function checkFyersStatus() {
 }
 
 void checkFyersStatus();
-setInterval(checkFyersStatus, 10000);
+setInterval(checkFyersStatus, 2000);
+
+async function saveApiCredentials(appId: string, secretKey: string, feedbackEl?: HTMLElement | null) {
+    const aid = appId.trim();
+    const sec = secretKey.trim();
+    if (!aid || !sec) {
+        if (feedbackEl) {
+            feedbackEl.className = 'step-feedback error';
+            feedbackEl.textContent = 'Please enter both App ID and Secret Key.';
+            feedbackEl.style.display = 'block';
+        } else {
+            alert('Please enter both App ID and Secret Key.');
+        }
+        return;
+    }
+    try {
+        const res = await fetch('http://127.0.0.1:5000/api/auth/configure', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appId: aid, secretKey: sec }),
+        });
+        if (res.ok) {
+            if (feedbackEl) {
+                feedbackEl.className = 'step-feedback success';
+                feedbackEl.textContent = '✓ Credentials saved successfully! Step 3 is now unlocked.';
+                feedbackEl.style.display = 'block';
+            } else {
+                alert('FYERS API credentials saved successfully!');
+            }
+            // Unlock Step 3 right away for instant responsiveness
+            step2Card?.classList.add('completed');
+            if (step2Tag) step2Tag.textContent = 'Saved ✓';
+            step3Card?.classList.remove('locked');
+            step3Card?.classList.add('active');
+            if (step3Tag) step3Tag.textContent = 'Ready to Connect';
+            if (screenLoginBtn) {
+                screenLoginBtn.removeAttribute('disabled');
+                screenLoginBtn.classList.remove('disabled');
+            }
+            await checkFyersStatus();
+        } else {
+            const err = await res.json().catch(() => ({}));
+            const msg = `Failed to save credentials: ${err.error || res.statusText}`;
+            if (feedbackEl) {
+                feedbackEl.className = 'step-feedback error';
+                feedbackEl.textContent = msg;
+                feedbackEl.style.display = 'block';
+            } else {
+                alert(msg);
+            }
+        }
+    } catch (err) {
+        const msg = `Failed to connect to proxy: ${err}`;
+        if (feedbackEl) {
+            feedbackEl.className = 'step-feedback error';
+            feedbackEl.textContent = msg;
+            feedbackEl.style.display = 'block';
+        } else {
+            alert(msg);
+        }
+    }
+}
+
+screenSaveCredsBtn?.addEventListener('click', () => {
+    if (screenAppIdInput && screenSecretKeyInput) {
+        void saveApiCredentials(screenAppIdInput.value, screenSecretKeyInput.value, step2Feedback);
+    }
+});
+
+const modalAppIdInput = document.getElementById('modal-app-id') as HTMLInputElement | null;
+const modalSecretKeyInput = document.getElementById('modal-secret-key') as HTMLInputElement | null;
+const modalSaveCredsBtn = document.getElementById('modal-save-creds-btn');
+const modalLogoutBtn = document.getElementById('modal-logout-btn');
+
+modalSaveCredsBtn?.addEventListener('click', () => {
+    if (modalAppIdInput && modalSecretKeyInput) {
+        void saveApiCredentials(modalAppIdInput.value, modalSecretKeyInput.value);
+    }
+});
+
+modalLogoutBtn?.addEventListener('click', async () => {
+    try {
+        await fetch('http://127.0.0.1:5000/api/auth/logout', { method: 'POST' });
+        authModal?.classList.remove('open');
+        await checkFyersStatus();
+    } catch (err) {
+        alert(`Logout error: ${err}`);
+    }
+});
+
+screenTokenBtn?.addEventListener('click', () => {
+    if (screenTokenInput?.value) {
+        void submitToken(screenTokenInput.value);
+    }
+});
 
 async function submitToken(tokenStr: string) {
     const token = tokenStr.trim();
@@ -824,7 +1067,7 @@ const monacoContainer = document.getElementById('monaco-container')!;
 const editor = monaco.editor.create(monacoContainer, {
     value: activeScript.code,
     language: 'pinescript',
-    theme: 'vs-dark',
+    theme: 'vs',
     automaticLayout: true,
     minimap: { enabled: false },
     fontSize: 13,

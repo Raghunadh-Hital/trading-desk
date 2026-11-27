@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
 import { config } from './config.js';
 import { fyersService } from './fyers-client.js';
 import { wsProxy } from './ws-server.js';
@@ -75,15 +77,33 @@ export function createServerApp() {
       res.send(`
         <!DOCTYPE html>
         <html>
-        <head><title>FYERS Authentication Successful</title></head>
-        <body style="font-family: sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
-          <div style="background: #1e293b; padding: 2rem; border-radius: 8px; border: 1px solid #334155; text-align: center; max-width: 480px;">
-            <h2 style="color: #22c55e;">Authentication Successful!</h2>
-            <p>Your FYERS API v3 access token has been generated and securely stored.</p>
-            <p>Redirecting back to Trading Desk Terminal...</p>
-            <a href="http://localhost:5190/terminal.html" style="display: inline-block; margin-top: 1rem; padding: 0.6rem 1.2rem; background: #3b82f6; color: white; text-decoration: none; border-radius: 4px;">Return to Chart</a>
-            <script>setTimeout(() => { window.location.href = 'http://localhost:5190/terminal.html'; }, 800);</script>
+        <head>
+          <meta charset="utf-8">
+          <title>FYERS Authentication Successful</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #0b101b; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+            .card { background: #151d2f; padding: 2.5rem; border-radius: 12px; border: 1px solid #28354e; text-align: center; max-width: 480px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6); }
+            h2 { color: #10b981; margin: 0 0 0.75rem; font-size: 1.5rem; }
+            p { color: #94a3b8; font-size: 0.95rem; line-height: 1.5; margin: 0 0 1.5rem; }
+            .badge { background: #090e18; border: 1px solid #1e293b; border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 1.5rem; color: #f1f5f9; font-size: 0.9rem; font-weight: 500; }
+            .btn { background: #2563eb; color: #fff; border: none; padding: 0.65rem 1.4rem; border-radius: 6px; font-weight: 600; font-size: 0.9rem; cursor: pointer; text-decoration: none; display: inline-block; transition: background 150ms ease; }
+            .btn:hover { background: #1d4ed8; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div style="font-size: 3rem; margin-bottom: 0.75rem;">🎉</div>
+            <h2>Authentication Successful!</h2>
+            <p>Your FYERS API v3 access token has been generated and securely saved on your device.</p>
+            <div class="badge">
+              ✓ You can now close this tab and return to <strong>Trading Desk</strong>!
+            </div>
+            <button class="btn" onclick="window.close()">Close This Tab</button>
           </div>
+          <script>
+            // Attempt to automatically close tab after 2 seconds
+            setTimeout(() => { try { window.close(); } catch {} }, 2000);
+          </script>
         </body>
         </html>
       `);
@@ -91,14 +111,47 @@ export function createServerApp() {
       res.status(500).send(`
         <!DOCTYPE html>
         <html>
-        <head><title>FYERS Authentication Failed</title></head>
-        <body style="font-family: sans-serif; background: #0f172a; color: #f8fafc; padding: 2rem;">
-          <h2 style="color: #ef4444;">Authentication Failed</h2>
-          <p>${result.message}</p>
+        <head>
+          <meta charset="utf-8">
+          <title>FYERS Authentication Failed</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #0b101b; color: #f8fafc; padding: 2.5rem; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+            .card { background: #151d2f; padding: 2.5rem; border-radius: 12px; border: 1px solid #ef4444; max-width: 480px; text-align: center; }
+            h2 { color: #ef4444; margin-top: 0; }
+            p { color: #94a3b8; line-height: 1.5; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h2>Authentication Failed</h2>
+            <p>${result.message}</p>
+            <button onclick="window.close()" style="background:#334155; color:#fff; border:none; padding:8px 16px; border-radius:6px; cursor:pointer;">Close</button>
+          </div>
         </body>
         </html>
       `);
     }
+  });
+
+  // Auth: configure credentials dynamically
+  app.post('/api/auth/configure', (req, res) => {
+    const { appId, secretKey, redirectUri } = req.body || {};
+    if (!appId || !secretKey || typeof appId !== 'string' || typeof secretKey !== 'string') {
+      return res.status(400).json({ error: 'appId and secretKey are required strings' });
+    }
+    fyersService.setCredentials(appId, secretKey, redirectUri);
+    res.json({
+      success: true,
+      configured: true,
+      appId: `${appId.slice(0, 4)}...`,
+      message: 'Credentials updated and stored securely',
+    });
+  });
+
+  // Auth: logout
+  app.post('/api/auth/logout', (_req, res) => {
+    fyersService.logout();
+    res.json({ success: true, message: 'Logged out successfully' });
   });
 
   // Auth: manual token injection (for testing or direct token setups)
@@ -144,6 +197,19 @@ export function createServerApp() {
       });
     }
   });
+
+  const staticDir = process.env.VELA_STATIC_DIR;
+  if (staticDir && fs.existsSync(staticDir)) {
+    app.use(express.static(staticDir));
+    app.get('*', (_req, res, next) => {
+      const target = path.join(staticDir, 'terminal.html');
+      if (fs.existsSync(target)) {
+        res.sendFile(target);
+      } else {
+        next();
+      }
+    });
+  }
 
   return app;
 }

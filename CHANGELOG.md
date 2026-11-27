@@ -7,6 +7,7 @@ All notable changes to Vela, newest first.
 ### Added
 
 - **FYERS Indian Market Data Provider and dedicated charting terminal.** Vela now ships `@luxalgo/vela/providers/fyers` supporting Indian equities, indices, and derivatives (NSE, BSE, MCX) with standard Indian market sessions (09:15-15:30 IST), automatic timeframe aggregation, local caching proxy integration, and live WebSocket tick streaming. A dedicated playground terminal provides Pine Script v5/v6 editing and execution via Monaco Code Editor and the PineTS engine.
+- **Standalone Desktop Application and in-app market data configuration.** Vela now packages as an installable desktop application with an embedded background proxy, isolated OS-level credential storage, and direct in-app setup for broker API credentials and authentication tokens.
 
 ### Fixed
 

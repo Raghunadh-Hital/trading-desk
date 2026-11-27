@@ -1,237 +1,189 @@
-<!-- markdownlint-disable no-inline-html first-line-h1 -->
-
 <div align="center">
 
-  <a href="https://velacharts.dev">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset=".github/banner.png">
-      <source media="(prefers-color-scheme: light)" srcset=".github/banner-light.png">
-      <img src=".github/banner.png" alt="Vela™ by LuxAlgo" width="100%">
-    </picture>
-  </a>
+  <img src="logo.png" alt="Trading Desk Logo" width="120" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(52, 75, 205, 0.25);" />
 
-# Vela™
-
-  <p><strong>Fast, extensible financial charts for the web: the open-source core of <a href="https://vela.luxalgo.com/chart">Vela</a> by LuxAlgo.</strong><br>
-  Headless core · native WebGL2 renderer · batteries-included workspace · plugin SDK</p>
-
-  [![npm version][npm-version-img]][npm-link]
-  [![Downloads][npm-downloads-img]][npm-link]
-  [![License][license-img]][license-link]
+# Trading Desk (TD)
+### High-Performance Open-Source Indian Market Desktop Terminal
+**Built with ❤️ for Indian Traders — Powered by Vela & FYERS API v3**
 
   <p>
-    <a href="https://velacharts.dev">Homepage</a> ·
-    <a href="#quick-start">Quick start</a> ·
-    <a href="https://docs.luxalgo.com/vela">Documentation</a> ·
-    <a href="#extending-plugin-sdk">Plugin SDK</a> ·
-    <a href="CHANGELOG.md">Changelog</a> ·
-    <a href="#license-and-attribution">License</a>
+    <strong>Zero Subscriptions · Zero 15-Minute Delays · Zero Annoying Ads · 100% Local & Open-Source</strong>
+  </p>
+
+  <p>
+    <a href="#features">Key Features</a> •
+    <a href="#why-fyers">Why FYERS?</a> •
+    <a href="#quick-start-desktop-app">Download & Install</a> •
+    <a href="#step-by-step-fyers-setup">FYERS Setup Walkthrough</a> •
+    <a href="#running-from-source">Run from Source</a> •
+    <a href="#license">License</a>
   </p>
 
 </div>
 
-<!-- markdownlint-enable no-inline-html -->
+---
 
-Vela™ renders interactive financial charts with its own native renderer (WebGL2, with a
-canvas2d fallback) and keeps the chart itself headless: drive it entirely from code, or
-drop in the workspace for a complete chart app in one call. Every layer (data providers,
-scripting engines, renderers) plugs in behind a public port and can be swapped without
-touching the rest.
+## The Story: Built for Indian Traders
 
-## What's in the box
+Most retail traders in India face the same frustrating limitations every single day:
+- **15-Minute Delays** on Indian stock and index charts unless you pay expensive monthly subscriptions.
+- **Paywalled Pro Features**: Basic necessities like 2+ indicators, multi-chart layout grids, and volume profiles locked behind recurring paywalls.
+- **Intrusive Ads and Popups** interrupting your intraday trading execution.
+- **Cloud Restrictions**: Your private indicators, custom Pine Scripts, and trading layouts locked into third-party cloud servers.
 
-<p align="center">
-  <img src=".github/vela-layout.png" alt="Vela package layout" width="100%">
-</p>
+**Trading Desk solves this completely.**
 
-- **`@luxalgo/vela`**: the headless chart. Data model, engines, drawings, providers,
-  native renderer.
-- **`@luxalgo/vela/workspace`**: the full chart app. One chart or a grid of them under
-  one shared topbar (symbol / timeframe / style / indicators), status line, symbol
-  watermark, bottom bar (ranges, clock, timezone), object tree, keyboard-first UX
-  (type a letter or `0` for symbol search, a digit 1–9 for timeframe entry, `?` for the shortcuts
-  panel), named cells, sync groups, and one persisted state document.
-- **`@luxalgo/vela/ui`**: the component kit the app is built on, re-exported from its own
-  package, [`@luxalgo/vela-ui`](packages/vela-ui/README.md), which works without the chart:
-  design tokens and one typed theme config, overlay chrome ([Zag.js](https://zagjs.com)
-  menus, dialogs, drawers, tooltips), form primitives and data components. Next to it, the
-  `KeymapManager`. Upgrading from 0.9? See [Upgrading](docs/user/upgrading.md).
-- **`@luxalgo/vela/plugin`**: the extension SDK. Chart types, renderer layers, native
-  indicators.
-- **`@luxalgo/vela/providers/*`**: data providers (Binance, Coinbase, Hyperliquid),
-  ready to register. Or supply your own bars and stay fully offline.
+Trading Desk takes the lightning-fast, WebGL2-accelerated open-source charting engine from **Vela**, integrates it with **FYERS API v3**, and packages it into a native, local-first desktop application.
 
-## Installing
+> **100% Free Forever. 100% Your Code. 100% Your Data.**  
+> Trading Desk runs directly on your local computer. It does not contact any third-party subscription servers. Your API credentials, Pine Scripts, charts, and drawings stay entirely on your local machine. You have full ownership because this project is 100% free and open-source.
 
-```bash
-npm install @luxalgo/vela
-```
+---
 
-## Quick start
+## ⚡ Core Features
 
-The fastest path is the workspace, a complete chart app in one call:
+| Feature | Trading Desk | Commercial Alternatives |
+| :--- | :--- | :--- |
+| **Real-Time Indian Market Data** | **Real-Time Tick Streaming (0s Delay)** | Often 15-min delayed without paid add-ons |
+| **Pricing / Subscription** | **Free & Open-Source Forever** | ₹1,200 – ₹5,000+ per month |
+| **Advertisements** | **Zero Ads or Banners** | Intrusive upgrade banners & popups |
+| **Simultaneous Indicators** | **Unlimited** (Multi-pane & overlays) | Capped at 2 or 3 on free tiers |
+| **Multi-Chart Layouts** | **Unlimited** (1, 2, 4, 8 grid layouts) | Locked behind paid tiers |
+| **Custom Indicators & Scripts** | **Built-in Monaco Pine Script v5 Editor** | Restricted script saves |
+| **Chart Drawings & Plotting** | **Unlimited Drawings & Local Saves** | Capped layouts / cloud limits |
+| **Data Privacy & Storage** | **100% Local on Your Machine** | Tracked and stored on cloud servers |
 
-```ts
-import { VelaWorkspace } from '@luxalgo/vela/workspace';
-import { BinanceProvider } from '@luxalgo/vela/providers/binance';
+### Detailed Breakdown
 
-const chart = new VelaWorkspace('#chart', {
-    layout: false, // one chart; '2h' | '4' | '8' | … for a multi-chart grid
-    symbol: 'BTCUSDT',
-    timeframe: '60',
-    live: true,
-    theme: 'dark',
-    providers: { binance: () => new BinanceProvider() },
-    persist: true, // restore market, style, timezone, drawings and indicators from localStorage
-});
-```
+1. **LIVE TICK DATA (No 15-Minute Delay)**  
+   Direct WebSocket tick aggregation from Indian exchanges (NSE & BSE) through your own free FYERS API connection. Every candle updates tick-by-tick in real-time.
+2. **INDIAN MARKET DATA**  
+   Full coverage for Indian equities, indices (NIFTY 50, BANKNIFTY, SENSEX), and major sectors.
+3. **NO ANNOYING ADS**  
+   A clean, distraction-free trading workspace designed strictly for serious market analysis and execution.
+4. **UNLIMITED INDICATORS**  
+   Stack as many indicators as your strategy requires across multiple panes and chart overlays simultaneously.
+5. **MULTIPLE LAYOUTS**  
+   Split your screen into multi-chart grids to monitor multiple timeframes (e.g. 1m, 5m, 15m, Daily) or multiple stocks side-by-side.
+6. **UNLIMITED PLOTTINGS & DRAWINGS**  
+   Trendlines, Fibonacci retracements, support/resistance zones, and text notes saved automatically to your local storage.
+7. **CUSTOM PINE SCRIPT v5 INTEGRATION**  
+   Includes a built-in Pine Script editor powered by Microsoft Monaco (VS Code engine). Write, compile, and run Pine Script indicators directly on your live charts with one click.
+8. **SMOOTH & FAST EXPERIENCE**  
+   Native WebGL2 rendering ensures 60 FPS silky smooth panning, zooming, and crosshair movement without lag.
 
-Prefer full control? Use the headless core directly:
+---
 
-```ts
-import { Vela } from '@luxalgo/vela';
-import { BinanceProvider } from '@luxalgo/vela/providers/binance';
+## Why Do We Need FYERS?
 
-const chart = new Vela('#chart', { symbol: 'binance:BTCUSDT', timeframe: '60', live: true });
-chart.data.registerProvider('binance', new BinanceProvider());
-await chart.ready();
-```
+To display live, real-time Indian stock market charts without charging users monthly data subscription fees, Trading Desk connects directly to **FYERS**.
 
-No provider, no network? Pass your own bars via the `data` option. See the
-[quickstart](docs/user/quickstart.md).
+- **Free Broker API**: FYERS provides free API v3 access to all trading account holders.
+- **Direct Exchange Feed**: Delivers official real-time trade ticks and historical OHLCV data directly from NSE and BSE.
+- **Zero Intermediary Fees**: By using your own FYERS credentials, you eliminate the need for expensive third-party market data subscriptions.
+- **Strict Privacy**: Your credentials and tokens are stored in your local computer's user data directory (`userData/vela-data`). They are never transmitted to any external server.
 
-### Browser bundle
+---
 
-The package also ships self-contained browser builds for script-tag usage:
-`dist/vela.global.js` (readable, development) and `dist/vela.global.min.js` (minified,
-production). Either file attaches the library's public API, including the bundled
-providers, to `window.Vela`.
+## 🚀 Quick Start: Desktop App (No Coding Required)
 
-## Indicators
+You do **not** need Node.js, Git, or VS Code installed to use Trading Desk.
 
-Vela™ ships **70+** built-in studies — moving averages, bands and channels, momentum
-oscillators, trend and volatility measures, volume studies, and price-anchored
-overlays such as VWAP, SuperTrend, and Pivot Points. They compute from the chart's
-own bars (no scripting engine), and each one gets a legend row, a settings dialog,
-and persistence across reloads. Volume and the visible-range volume profile sit
-alongside them.
+1. Go to the [Releases](https://github.com/your-username/trading-desk/releases) page on GitHub.
+2. Download either:
+   - **Installer**: `Trading Desk Setup 0.10.17.exe` (Recommended: installs silently, creates a Desktop shortcut with the official icon, and adds it to your Start menu).
+   - **Portable**: `Trading Desk 0.10.17.exe` (Runs directly without installation).
+3. Double-click the file to launch Trading Desk.
 
-Custom scripts still run through pluggable engines. Vela™ **ships none**: install the
-addon for the language you want, or write one against the public `ScriptingEngine` port.
-Pine Script® lives in [`@luxalgo/vela-pinets`](https://github.com/LuxAlgo/Vela-pinets)
-(`npm i @luxalgo/vela-pinets pinets`), which is **AGPL-3.0** because the PineTS runtime it
-executes is. Vela™ itself stays Apache-2.0 and carries no Pine code:
+---
 
-```ts
-import { PineEngine } from '@luxalgo/vela-pinets';
+## 📖 Step-by-Step FYERS Setup Walkthrough
 
-chart.registerEngine('pine', new PineEngine());
-chart.addIndicator(`//@version=6
-indicator("EMA 20", overlay=true)
-plot(ta.ema(close, 20), color=color.orange, linewidth=2)`);
-```
+When you open Trading Desk for the first time, you will see a spacious **3-Step Onboarding Screen**. Follow these simple steps:
 
-Host tooling can execute-and-inject safely with `chart.runIndicator(source)` (structured
-errors, no dead legend rows) and read a running script's state, including its **return
-value**, via `handle.context()` (read-only snapshots, worker-safe). See the
-[API reference](docs/user/api-reference.md#capturing-what-a-script-computes), and
-[Scripting engines](docs/user/scripting-engines.md) for the addon and for writing your own.
+### Step 1: Configure Your App on FYERS
 
-The workspace takes an **indicator manifest**: inline JSON, a URL returning it, or an
-async loader (`() => Promise<manifest>`):
+1. Log in to your FYERS trading account and visit the [FYERS API Dashboard](https://fyers.in/web/api-dashboard/user-apps).
+2. If you do not have an app yet, click **+ Create App**. If you already have one, click on your app and select **Edit details**.
+3. Under **App Info**, configure the following:
+   - **Primary IP address\***: Click the **[Copy IP]** button in Trading Desk to copy your detected public IP address, and paste it into FYERS.
+   - **Redirect URL\***: Click the **[Copy URL]** button in Trading Desk to copy `http://127.0.0.1:5000/api/auth/callback`, and paste it into FYERS.
+   - **Permissions**: Ensure **Historical data, Quotes and market data** (and Orders) are granted.
+4. Click **Save Changes** on the FYERS dashboard.
 
-```ts
-new VelaWorkspace('#chart', {
-    // …
-    engines: { pine: () => new PineEngine() },
-    indicators: '/indicators.json', // or an inline [{ name, script | url, language?, enabled? }]
-});
-```
+### Step 2: Save Your API Credentials in Trading Desk
 
-## Extending (plugin SDK)
+1. In your FYERS dashboard, look at the right-hand panel under **App credentials & info**:
+   - Copy the **App ID** (e.g. `XC12345-100`).
+   - Click the eye icon to reveal and copy your **Secret ID**.
+2. Return to Trading Desk and paste both into **Step 2**.
+3. Click **Save Credentials**.  
+   You will see an instant confirmation: `✓ Credentials saved successfully! Step 3 is now unlocked.`
 
-Custom chart types and canvas layers register through the public SDK, no fork needed:
+### Step 3: 1-Click Login via Your Browser
 
-```ts
-import { registerChartType, registerRendererLayer } from '@luxalgo/vela/plugin';
+1. Click the highlighted **Log in with FYERS (1-Click)** button.
+2. Your default system browser (Chrome/Edge/Brave) will open the official FYERS login page.
+3. Complete authentication with your mobile number / Client ID, OTP, and PIN.  
+   *(Because authentication occurs in your standard browser, Cloudflare verification passes smoothly without blocking).*
+4. Once authorized, FYERS redirects back to your local proxy, Trading Desk automatically receives your session token, and your live charts immediately unlock!
 
-// A new price style: bar transform + optional per-bar data engine + ticker modifier.
-registerChartType({
-    id: 'renko-like',
-    label: 'Renko-like',
-    barTransform: { full: (bars) => transformAll(bars), next: (bar) => transformOne(bar) },
-});
+---
 
-// A custom canvas layer, painted every frame with the chart (its id = its data channel).
-registerRendererLayer({
-    id: 'renko-like',
-    placement: 'above-data',
-    create: () => ({ mount(canvas) {/* keep it */}, render({ bars, data, coords, scale, bounds }) {/* paint */} }),
-});
-```
+## 🛠️ Running from Source (For Developers)
 
-A registered chart type automatically appears in the workspace's style dropdown, and a
-chart type's `dataEngine` pushes to its layer's channel with zero extra wiring. See
-[docs/contributing/plugin-sdk.md](docs/contributing/plugin-sdk.md).
+If you wish to build or customize Trading Desk from source code:
 
-## Documentation
+### Prerequisites
 
-Full documentation lives in [docs/](docs/index.md): user guides ([quickstart](docs/user/quickstart.md),
-[the workspace](docs/user/workspace.md), [options](docs/user/options.md), [API reference](docs/user/api-reference.md)),
-[architecture](docs/architecture/overview.md), and [contributing](docs/contributing/setup.md) guides
-including the [plugin SDK](docs/contributing/plugin-sdk.md).
+- [Node.js](https://nodejs.org/) (v20+ recommended)
+- `npm` (v10+ recommended)
+- Python 3 with Pillow (`pip install Pillow`) for icon generation (optional)
 
-## For coding agents
-
-The package carries what a coding agent needs, versioned with the code: the docs, an
-[`llms.txt`](llms.txt) index, and agent skills ([building charts](skills/building-vela-charts/SKILL.md),
-[data providers](skills/using-vela-data-providers/SKILL.md),
-[indicators and engines](skills/adding-vela-indicators/SKILL.md),
-[drawing tools](skills/using-vela-drawing-tools/SKILL.md),
-[extending with plugins](skills/extending-vela-with-plugins/SKILL.md),
-[upgrading](skills/upgrading-vela/SKILL.md), plus the UI kit's three on using, theming and
-writing components). Give them to your agent with:
+### Setup & Development
 
 ```bash
-npx skills add LuxAlgo/Vela          # from this repository
-npx skills experimental_sync         # or: link the ones shipped in node_modules
-```
+# 1. Clone the repository
+git clone https://github.com/your-username/trading-desk.git
+cd trading-desk
 
-## Development
-
-```bash
+# 2. Install dependencies
 npm install
-npm run playground   # vite playground on http://localhost:5190
-npm test             # vitest
-npm run build        # tsup → dist/
+npm install --prefix server
+
+# 3. Start the local proxy server
+npm run server
+
+# 4. In a separate terminal, launch the desktop development app
+npm run electron:dev
 ```
 
-## License and attribution
+### Building Desktop Installers
 
-Vela™ is licensed under the **Apache License, Version 2.0** (see [LICENSE](LICENSE)).
-The [NOTICE](NOTICE) file adds an **attribution requirement**, and redistributions must
-include it per Apache-2.0 §4(d):
+To package the production `.exe` installers:
 
-- Every chart renders a small **Vela™ attribution watermark** — the project logomark,
-  linking to the [project page][homepage] — enabled by default. You may restyle or
-  reposition it to fit your design.
-- You may turn the watermark off (`chart.renderer.set('attribution', false)`) **only if**
-  an equivalent visible attribution is shown elsewhere on the same page or screen, where
-  your users can see it: the name "Vela™" linking to the project page.
-- Removing, hiding, or obscuring the attribution without providing that equivalent
-  notice is not permitted.
+```bash
+npm run electron:build
+```
 
-This is the same licensing model used by other popular charting libraries, and we're
-grateful when the watermark stays in a visible spot.
+The output binaries will be generated inside the `release/` folder:
+- `release/Trading Desk Setup 0.10.17.exe` (One-click NSIS installer with desktop shortcut)
+- `release/Trading Desk 0.10.17.exe` (Standalone portable executable)
 
-No scripting engine ships with this package; the Pine Script® addon
-(`@luxalgo/vela-pinets`) is AGPL-3.0 and licensed separately (see *Indicators*).
+---
 
-[homepage]: https://velacharts.dev
+## 🏛️ Architecture & Ground Rules
 
-[npm-version-img]: https://img.shields.io/npm/v/%40luxalgo%2Fvela.svg
-[npm-downloads-img]: https://img.shields.io/npm/dm/%40luxalgo%2Fvela.svg
-[npm-link]: https://www.npmjs.com/package/@luxalgo/vela
+- **Headless Core**: Powered by Vela's WebGL2 financial charting library.
+- **Local Proxy Server**: A lightweight Express/TypeScript server running on `127.0.0.1:5000` manages FYERS WebSocket streams, tick aggregation, token renewals, and symbol lookups.
+- **Zero Mock Ticks**: Strictly real exchange trade data. When markets are closed (e.g. after 3:30 PM IST), charts remain 100% static with no synthetic price jiggling.
+- **Local Persistence**: Indicator states, layouts, and drawings persist in your local IndexedDB / localStorage.
 
-[license-img]: https://img.shields.io/badge/license-Apache--2.0-blue.svg
-[license-link]: LICENSE
+---
+
+## 📄 License & Attribution
+
+Trading Desk is open-source software licensed under the **Apache License 2.0**.
+
+- Charting engine foundation powered by [Vela](https://velacharts.dev) by LuxAlgo under Apache-2.0.
+- Indian market data integration powered by [FYERS API v3](https://fyers.in).

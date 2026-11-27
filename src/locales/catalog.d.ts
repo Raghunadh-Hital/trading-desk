@@ -22,6 +22,7 @@ export interface VelaCoreMessageCatalog {
     'chart.indicatorSettings.propertiesTab': string;
     'chart.indicatorSettings.resetDefaults': string;
     'chart.indicatorSettings.selectSymbol': string;
+    'chart.indicatorSettings.styleTab': string;
     'chart.indicatorSettings.timeframe.chart': string;
     'chart.indicatorSettings.timeframe.day': string;
     'chart.indicatorSettings.timeframe.hours': string;

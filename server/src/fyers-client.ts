@@ -1,6 +1,12 @@
 import fyersModule from 'fyers-api-v3';
 import { config } from './config.js';
-import { getStoredToken, saveStoredToken, clearStoredToken } from './token-store.js';
+import {
+  getStoredToken,
+  saveStoredToken,
+  clearStoredToken,
+  getStoredCredentials,
+  saveStoredCredentials,
+} from './token-store.js';
 import { historyCache } from './cache.js';
 import {
   transformFyersCandlesToVelaBars,
@@ -8,7 +14,6 @@ import {
   type FyersHistoryResponse,
   type FyersRawCandle,
 } from './types.js';
-import { generateMockCandles } from './mock-data.js';
 
 // fyersModule exports { fyersModel, fyersDataSocket, ... }
 const { fyersModel } = fyersModule;
@@ -42,6 +47,14 @@ export class FyersClientService {
 
   constructor() {
     this.model = new fyersModel();
+
+    const storedCreds = getStoredCredentials();
+    if (storedCreds) {
+      if (!config.fyersAppId && storedCreds.appId) config.fyersAppId = storedCreds.appId;
+      if (!config.fyersSecretKey && storedCreds.secretKey) config.fyersSecretKey = storedCreds.secretKey;
+      if (storedCreds.redirectUri) config.fyersRedirectUri = storedCreds.redirectUri;
+    }
+
     if (config.fyersAppId) {
       this.model.setAppId(config.fyersAppId);
     }
@@ -53,6 +66,21 @@ export class FyersClientService {
     if (saved) {
       this.setToken(saved);
     }
+  }
+
+  public setCredentials(appId: string, secretKey: string, redirectUri?: string): void {
+    config.fyersAppId = appId.trim();
+    config.fyersSecretKey = secretKey.trim();
+    if (redirectUri && redirectUri.trim()) {
+      config.fyersRedirectUri = redirectUri.trim();
+    }
+    this.model.setAppId(config.fyersAppId);
+    this.model.setRedirectUrl(config.fyersRedirectUri);
+    saveStoredCredentials({
+      appId: config.fyersAppId,
+      secretKey: config.fyersSecretKey,
+      redirectUri: config.fyersRedirectUri,
+    });
   }
 
   public isConfigured(): boolean {
@@ -322,10 +350,12 @@ export class FyersClientService {
       }
     }
 
-    // Mock data fallback for developer experience (or when daily API limit is exhausted)
-    const mockBars = generateMockCandles(symbol, resolution, rawFrom, rawTo);
-    historyCache.set(cacheKey, mockBars, hitDailyLimit ? 300 : 30);
-    return { s: 'ok', candles: mockBars, source: 'mock', ...(hitDailyLimit ? { rateLimited: true } : {}) };
+    return {
+      s: 'ok',
+      candles: [],
+      source: 'fyers',
+      ...(hitDailyLimit ? { rateLimited: true } : {}),
+    };
   }
 }
 

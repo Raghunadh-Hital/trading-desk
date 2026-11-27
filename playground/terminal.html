@@ -4,16 +4,49 @@
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>Trading Desk — Indian Market Terminal (NSE / BSE + FYERS + Pine Script)</title>
+        <link rel="icon" type="image/png" href="./logo.png" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
         <style>
+            /* TD Desktop App — Official Visual Design System */
             :root {
-                --bg: #0f172a;
-                --surface: #1e293b;
-                --surface-hover: #334155;
-                --border: #334155;
-                --text: #f8fafc;
-                --text-muted: #94a3b8;
-                --accent: #2962ff;
-                --accent-hover: #1e4bd8;
+                --td-primary: #344BCD;
+                --td-blue-secondary: #6179E9;
+                --td-blue-light: #A9C0FA;
+
+                --td-white: #FFFFFF;
+                --td-background: #F7F8FF;
+                --td-surface: #FFFFFF;
+
+                --td-text-primary: #172033;
+                --td-text-secondary: #68738A;
+
+                --td-border: #E7EAF5;
+
+                --td-gradient: linear-gradient(
+                    135deg,
+                    #344BCD 0%,
+                    #6179E9 40%,
+                    #A9C0FA 72%,
+                    #FFFFFF 100%
+                );
+
+                --td-gradient-soft: linear-gradient(
+                    135deg,
+                    rgba(52, 75, 205, 0.12) 0%,
+                    rgba(97, 121, 233, 0.07) 50%,
+                    rgba(255, 255, 255, 0.95) 100%
+                );
+
+                --bg: var(--td-background);
+                --surface: var(--td-surface);
+                --surface-hover: #F0F4FE;
+                --border: var(--td-border);
+                --text: var(--td-text-primary);
+                --text-muted: var(--td-text-secondary);
+                --accent: var(--td-primary);
+                --accent-hover: #2638a2;
                 --success: #10b981;
                 --danger: #ef4444;
             }
@@ -23,9 +56,9 @@
                 padding: 0;
                 height: 100%;
                 width: 100%;
-                background: var(--bg);
-                color: var(--text);
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                background: var(--td-background);
+                color: var(--td-text-primary);
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
@@ -33,16 +66,17 @@
 
             /* Terminal Header */
             #terminal-header {
-                height: 48px;
-                background: var(--surface);
-                border-bottom: 1px solid var(--border);
+                height: 52px;
+                background: var(--td-surface);
+                border-bottom: 1px solid var(--td-border);
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                padding: 0 16px;
+                padding: 0 18px;
                 gap: 16px;
                 z-index: 10;
                 flex-shrink: 0;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
             }
             .header-left,
             .header-right {
@@ -53,55 +87,76 @@
             .brand {
                 font-size: 16px;
                 font-weight: 700;
-                color: #fff;
+                color: var(--td-text-primary);
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: 10px;
                 letter-spacing: -0.01em;
+                user-select: none;
             }
-            .brand .badge {
-                font-size: 11px;
-                background: #3b82f6;
-                color: #fff;
-                padding: 2px 6px;
-                border-radius: 4px;
-                font-weight: 700;
-                letter-spacing: 0.05em;
+            .brand-logo {
+                width: 30px;
+                height: 30px;
+                border-radius: 8px;
+                object-fit: contain;
+                box-shadow: 0 2px 8px rgba(52, 75, 205, 0.22);
+            }
+            .brand-title {
+                font-family: 'Montserrat', sans-serif;
+                font-weight: 800;
+                font-size: 16px;
+                letter-spacing: -0.02em;
+                color: var(--td-text-primary);
             }
 
             .action-btn {
-                background: var(--accent);
+                background: var(--td-gradient);
                 color: #fff;
                 border: none;
-                padding: 6px 14px;
-                border-radius: 4px;
+                padding: 7px 16px;
+                border-radius: 8px;
                 font-size: 12px;
                 font-weight: 600;
                 cursor: pointer;
                 display: flex;
                 align-items: center;
                 gap: 6px;
-                transition: background 120ms;
+                box-shadow: 0 2px 8px rgba(52, 75, 205, 0.2);
+                transition: all 180ms ease;
             }
             .action-btn:hover {
-                background: var(--accent-hover);
+                opacity: 0.92;
+                box-shadow: 0 4px 12px rgba(52, 75, 205, 0.3);
+                transform: translateY(-1px);
             }
             .action-btn.secondary {
-                background: #334155;
+                background: #ffffff;
+                border: 1px solid var(--td-border);
+                color: var(--td-text-primary);
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
             }
             .action-btn.secondary:hover {
-                background: #475569;
+                background: #f0f4fe;
+                border-color: var(--td-blue-light);
+                color: var(--td-primary);
             }
             .auth-status {
                 display: flex;
                 align-items: center;
                 gap: 6px;
                 font-size: 12px;
-                color: var(--text-muted);
+                color: var(--td-text-secondary);
                 cursor: pointer;
-                padding: 4px 8px;
-                border-radius: 4px;
-                border: 1px solid var(--border);
+                padding: 5px 10px;
+                border-radius: 8px;
+                border: 1px solid var(--td-border);
+                background: #ffffff;
+                transition: all 150ms ease;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+            }
+            .auth-status:hover {
+                border-color: var(--td-blue-light);
+                color: var(--td-primary);
             }
             .status-dot {
                 width: 8px;
@@ -133,13 +188,13 @@
                 inset: 0;
             }
 
-            /* Right-Side Pine Script Editor Drawer (TradingView Style) */
+            /* Right-Side Pine Script Editor Drawer */
             #editor-panel {
                 width: 580px;
                 max-width: 65vw;
                 height: 100%;
-                background: #0d1117;
-                border-left: 1px solid #30363d;
+                background: #1e1e1e;
+                border-left: 1px solid var(--td-border);
                 border-top: none;
                 display: flex;
                 flex-direction: column;
@@ -155,8 +210,8 @@
             }
             #editor-toolbar {
                 height: 44px;
-                background: #161b22;
-                border-bottom: 1px solid #30363d;
+                background: #ffffff;
+                border-bottom: 1px solid var(--td-border);
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
@@ -172,7 +227,7 @@
             }
             .editor-title {
                 font-weight: 600;
-                color: #c9d1d9;
+                color: var(--td-text-primary);
                 display: flex;
                 align-items: center;
                 gap: 8px;
@@ -183,17 +238,17 @@
                 align-items: center;
                 gap: 6px;
                 padding: 4px 10px;
-                background: #21262d;
-                border: 1px solid #30363d;
+                background: #F7F8FF;
+                border: 1px solid var(--td-border);
                 border-radius: 6px;
                 font-size: 12px;
-                font-weight: 500;
-                color: #e6edf3;
+                font-weight: 600;
+                color: var(--td-text-primary);
                 transition: background 120ms, border-color 120ms;
             }
             #active-script-btn:hover {
-                background: #30363d;
-                border-color: #58a6ff;
+                background: #F0F4FE;
+                border-color: var(--td-blue-light);
             }
             .modified-dot {
                 display: inline-block;
@@ -213,18 +268,18 @@
             }
             #editor-console {
                 height: 32px;
-                background: #090d13;
-                border-top: 1px solid #30363d;
+                background: #F7F8FF;
+                border-top: 1px solid var(--td-border);
                 padding: 0 16px;
                 display: flex;
                 align-items: center;
                 font-size: 12px;
                 font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-                color: #8b949e;
+                color: var(--td-text-secondary);
                 flex-shrink: 0;
             }
             #editor-console.success {
-                color: var(--success);
+                color: #059669;
             }
             #editor-console.error {
                 color: var(--danger);
@@ -235,7 +290,7 @@
                 display: none;
                 position: fixed;
                 inset: 0;
-                background: rgba(0, 0, 0, 0.75);
+                background: rgba(15, 23, 42, 0.45);
                 backdrop-filter: blur(4px);
                 z-index: 100;
                 align-items: center;
@@ -245,16 +300,16 @@
                 display: flex;
             }
             .scripts-modal-card {
-                background: #161b22;
-                border: 1px solid #30363d;
-                border-radius: 10px;
-                padding: 20px 24px;
-                width: 540px;
+                background: #ffffff;
+                border: 1px solid var(--td-border);
+                border-radius: 16px;
+                padding: 22px 24px;
+                width: 560px;
                 max-width: 92vw;
                 max-height: 85vh;
                 display: flex;
                 flex-direction: column;
-                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+                box-shadow: 0 20px 40px rgba(23, 32, 51, 0.12);
             }
             .scripts-modal-header {
                 display: flex;
@@ -262,13 +317,14 @@
                 justify-content: space-between;
                 margin-bottom: 16px;
                 padding-bottom: 12px;
-                border-bottom: 1px solid #30363d;
+                border-bottom: 1px solid var(--td-border);
             }
             .scripts-modal-header h3 {
                 margin: 0;
                 font-size: 16px;
-                font-weight: 600;
-                color: #f0f6fc;
+                font-family: 'Montserrat', sans-serif;
+                font-weight: 700;
+                color: var(--td-text-primary);
                 display: flex;
                 align-items: center;
                 gap: 8px;
@@ -288,19 +344,19 @@
                 align-items: center;
                 justify-content: space-between;
                 padding: 10px 14px;
-                background: #0d1117;
-                border: 1px solid #30363d;
-                border-radius: 6px;
+                background: #F7F8FF;
+                border: 1px solid var(--td-border);
+                border-radius: 8px;
                 cursor: pointer;
                 transition: background 120ms, border-color 120ms;
             }
             .script-item:hover {
-                background: #21262d;
-                border-color: #58a6ff;
+                background: #F0F4FE;
+                border-color: var(--td-blue-light);
             }
             .script-item.active {
-                border-color: #238636;
-                background: rgba(35, 134, 54, 0.12);
+                border-color: var(--td-primary);
+                background: rgba(52, 75, 205, 0.08);
             }
             .script-item-info {
                 display: flex;
@@ -311,7 +367,7 @@
             .script-item-title {
                 font-size: 13px;
                 font-weight: 600;
-                color: #e6edf3;
+                color: var(--td-text-primary);
                 display: flex;
                 align-items: center;
                 gap: 8px;
@@ -320,19 +376,19 @@
                 font-size: 10px;
                 padding: 1px 6px;
                 border-radius: 10px;
-                background: #21262d;
-                border: 1px solid #30363d;
-                color: #8b949e;
+                background: #ffffff;
+                border: 1px solid var(--td-border);
+                color: var(--td-text-secondary);
                 font-weight: 500;
             }
             .script-badge.active-badge {
-                background: rgba(35, 134, 54, 0.2);
-                border-color: #238636;
-                color: #3fb950;
+                background: rgba(52, 75, 205, 0.12);
+                border-color: var(--td-blue-light);
+                color: var(--td-primary);
             }
             .script-item-meta {
                 font-size: 11px;
-                color: #8b949e;
+                color: var(--td-text-secondary);
             }
             .script-item-actions {
                 display: flex;
@@ -340,12 +396,12 @@
                 gap: 6px;
             }
             .script-item-btn {
-                background: none;
-                border: 1px solid transparent;
-                color: #8b949e;
+                background: #ffffff;
+                border: 1px solid var(--td-border);
+                color: var(--td-text-secondary);
                 cursor: pointer;
                 padding: 5px 8px;
-                border-radius: 4px;
+                border-radius: 6px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -353,19 +409,19 @@
                 transition: all 120ms;
             }
             .script-item-btn:hover {
-                background: #30363d;
-                color: #f0f6fc;
-                border-color: #484f58;
+                background: #F0F4FE;
+                color: var(--td-primary);
+                border-color: var(--td-blue-light);
             }
             .script-item-btn.delete:hover {
-                background: rgba(248, 81, 73, 0.15);
-                color: #f85149;
-                border-color: rgba(248, 81, 73, 0.3);
+                background: rgba(239, 68, 68, 0.1);
+                color: #ef4444;
+                border-color: rgba(239, 68, 68, 0.3);
             }
             .scripts-empty-state {
                 text-align: center;
                 padding: 36px 16px;
-                color: #8b949e;
+                color: var(--td-text-secondary);
                 font-size: 13px;
             }
 
@@ -373,6 +429,13 @@
             #auth-modal {
                 display: none;
                 position: fixed;
+                inset: 0;
+                background: rgba(15, 23, 42, 0.45);
+                backdrop-filter: blur(4px);
+                z-index: 100;
+                align-items: center;
+                justify-content: center;
+            }
                 inset: 0;
                 background: rgba(0, 0, 0, 0.7);
                 backdrop-filter: blur(4px);
@@ -384,147 +447,379 @@
                 display: flex;
             }
 
-            /* Fullscreen Login Screen (Shown when Token is Expired or Missing) */
+            /* Fullscreen 3-Step Onboarding Screen */
             #login-screen {
                 display: none;
                 position: fixed;
-                inset: 48px 0 0 0;
-                background: #090d16;
+                inset: 52px 0 0 0;
+                background: radial-gradient(circle at 10% 10%, rgba(52, 75, 205, 0.07) 0%, transparent 40%),
+                            radial-gradient(circle at 90% 90%, rgba(169, 192, 250, 0.15) 0%, transparent 50%),
+                            var(--td-background);
                 z-index: 90;
                 align-items: center;
                 justify-content: center;
-                flex-direction: column;
+                overflow-y: auto;
+                padding: 28px 20px;
+                box-sizing: border-box;
             }
             #login-screen.visible {
                 display: flex;
             }
-            .login-card {
-                background: #151d2f;
-                border: 1px solid #28354e;
-                border-radius: 12px;
-                padding: 36px 32px;
-                width: 480px;
-                max-width: 92vw;
-                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75);
+            .onboarding-container {
+                width: 85%;
+                max-width: 1140px;
+                margin: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 22px;
+            }
+            .onboarding-header {
                 text-align: center;
+                margin-bottom: 4px;
             }
-            .login-card h2 {
+            .onboarding-header h2 {
                 margin: 0 0 8px;
-                font-size: 22px;
-                color: #fff;
-                font-weight: 700;
+                font-size: 26px;
+                font-weight: 800;
+                color: var(--td-text-primary);
+                font-family: 'Montserrat', sans-serif;
+                letter-spacing: -0.02em;
             }
-            .login-card .subtitle {
-                font-size: 13px;
-                color: #94a3b8;
-                line-height: 1.6;
-                margin: 0 0 24px;
+            .onboarding-header p {
+                margin: 0 auto;
+                font-size: 14px;
+                color: var(--td-text-secondary);
+                max-width: 680px;
+                line-height: 1.5;
             }
-            .login-card .warning-badge {
+            .onboarding-status-pill {
                 display: inline-flex;
                 align-items: center;
                 gap: 6px;
-                background: rgba(239, 68, 68, 0.15);
-                border: 1px solid rgba(239, 68, 68, 0.3);
-                color: #fca5a5;
-                font-size: 12px;
-                font-weight: 500;
-                padding: 6px 12px;
-                border-radius: 6px;
-                margin-bottom: 20px;
+                padding: 5px 14px;
+                border-radius: 9999px;
+                font-size: 11px;
+                font-weight: 600;
+                background: rgba(52, 75, 205, 0.08);
+                border: 1px solid rgba(52, 75, 205, 0.22);
+                color: var(--td-primary);
+                margin-bottom: 12px;
             }
-            .login-btn-primary {
+            .onboarding-status-pill.configured {
+                background: rgba(16, 185, 129, 0.12);
+                border-color: rgba(16, 185, 129, 0.3);
+                color: #059669;
+            }
+
+            /* 3-Column Step Cards Grid */
+            .steps-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 20px;
+            }
+            @media (max-width: 900px) {
+                .steps-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+            .step-card {
+                background: #ffffff;
+                border: 1px solid var(--td-border);
+                border-radius: 16px;
+                padding: 24px 22px;
+                display: flex;
+                flex-direction: column;
+                position: relative;
+                box-shadow: 0 4px 20px -2px rgba(52, 75, 205, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+                transition: all 200ms ease;
+            }
+            .step-card.active {
+                border-color: var(--td-primary);
+                box-shadow: 0 0 0 2px rgba(52, 75, 205, 0.15), 0 10px 25px -5px rgba(52, 75, 205, 0.12);
+            }
+            .step-card.completed {
+                border-color: #10b981;
+                box-shadow: 0 4px 20px -2px rgba(16, 185, 129, 0.08);
+            }
+            .step-card.locked {
+                opacity: 0.6;
+            }
+            .step-card-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 14px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid var(--td-border);
+            }
+            .step-badge-title {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            .step-badge {
+                width: 28px;
+                height: 28px;
+                border-radius: 50%;
+                background: var(--td-gradient);
+                color: #fff;
+                font-weight: 700;
+                font-size: 13px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                gap: 10px;
+                flex-shrink: 0;
+                box-shadow: 0 2px 6px rgba(52, 75, 205, 0.25);
+            }
+            .step-card.completed .step-badge {
+                background: #10b981;
+                box-shadow: 0 2px 6px rgba(16, 185, 129, 0.25);
+            }
+            .step-title {
+                font-size: 14px;
+                font-weight: 700;
+                color: var(--td-text-primary);
+            }
+            .step-status-tag {
+                font-size: 10px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                padding: 4px 8px;
+                border-radius: 6px;
+                background: #F0F4FE;
+                color: var(--td-primary);
+            }
+            .step-card.completed .step-status-tag {
+                background: rgba(16, 185, 129, 0.12);
+                color: #059669;
+            }
+            .step-card.active .step-status-tag {
+                background: rgba(52, 75, 205, 0.1);
+                color: var(--td-primary);
+            }
+            .step-body {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                font-size: 12px;
+                color: var(--td-text-secondary);
+                line-height: 1.5;
+            }
+            .step-field {
+                display: flex;
+                flex-direction: column;
+                gap: 5px;
+            }
+            .step-field label {
+                font-size: 11px;
+                font-weight: 600;
+                color: var(--td-text-primary);
+            }
+            .step-field input {
                 width: 100%;
                 box-sizing: border-box;
-                padding: 12px 18px;
-                background: #2563eb;
-                color: #fff;
+                padding: 9px 12px;
+                background: #ffffff;
+                border: 1px solid var(--td-border);
+                border-radius: 8px;
+                color: var(--td-text-primary);
+                font-size: 12px;
+                outline: none;
+                transition: border-color 150ms ease, box-shadow 150ms ease;
+            }
+            .step-field input:focus {
+                border-color: var(--td-primary);
+                box-shadow: 0 0 0 3px rgba(52, 75, 205, 0.12);
+            }
+            .step-copy-box {
+                display: flex;
+                align-items: center;
+                background: #F7F8FF;
+                border: 1px solid var(--td-border);
+                border-radius: 8px;
+                padding: 7px 10px;
+                gap: 8px;
+            }
+            .step-copy-box code {
+                flex: 1;
+                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+                font-size: 11px;
+                color: var(--td-primary);
+                font-weight: 600;
+                user-select: all;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .step-copy-btn {
+                background: #ffffff;
+                border: 1px solid var(--td-border);
+                color: var(--td-text-primary);
+                font-size: 11px;
+                padding: 4px 8px;
                 border-radius: 6px;
-                font-size: 14px;
+                cursor: pointer;
+                font-weight: 500;
+                transition: all 120ms ease;
+                flex-shrink: 0;
+            }
+            .step-copy-btn:hover {
+                background: #F0F4FE;
+                border-color: var(--td-blue-light);
+                color: var(--td-primary);
+            }
+            .step-action-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                width: 100%;
+                box-sizing: border-box;
+                padding: 11px 16px;
+                background: var(--td-gradient);
+                color: #fff;
+                border-radius: 8px;
+                font-size: 13px;
                 font-weight: 600;
                 text-decoration: none;
                 cursor: pointer;
                 border: none;
-                transition: background 150ms ease;
+                box-shadow: 0 4px 12px rgba(52, 75, 205, 0.25);
+                transition: all 150ms ease;
             }
-            .login-btn-primary:hover {
-                background: #1d4ed8;
+            .step-action-btn:hover {
+                opacity: 0.94;
+                transform: translateY(-1px);
+                box-shadow: 0 6px 16px rgba(52, 75, 205, 0.32);
             }
-            .login-divider {
-                display: flex;
-                align-items: center;
-                margin: 20px 0;
-                color: #475569;
+            .step-action-btn.secondary {
+                background: #ffffff;
+                border: 1px solid var(--td-border);
+                color: var(--td-text-primary);
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+            }
+            .step-action-btn.secondary:hover {
+                background: #F0F4FE;
+                border-color: var(--td-blue-light);
+                color: var(--td-primary);
+            }
+            .step-action-btn.success {
+                background: var(--td-gradient);
+            }
+            .step-action-btn:disabled,
+            .step-action-btn.disabled {
+                opacity: 0.45;
+                cursor: not-allowed;
+                pointer-events: none;
+                box-shadow: none;
+            }
+            .step-feedback {
+                padding: 8px 12px;
+                border-radius: 8px;
+                font-size: 11px;
+                font-weight: 500;
+                text-align: center;
+                line-height: 1.4;
+            }
+            .step-feedback.success {
+                background: rgba(16, 185, 129, 0.12);
+                border: 1px solid rgba(16, 185, 129, 0.3);
+                color: #059669;
+            }
+            .step-feedback.error {
+                background: rgba(239, 68, 68, 0.12);
+                border: 1px solid rgba(239, 68, 68, 0.3);
+                color: #dc2626;
+            }
+
+            /* Manual Token Accordion */
+            .manual-token-details {
+                background: #ffffff;
+                border: 1px solid var(--td-border);
+                border-radius: 12px;
+                padding: 12px 18px;
                 font-size: 12px;
+                color: var(--td-text-secondary);
+                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
             }
-            .login-divider::before,
-            .login-divider::after {
-                content: '';
-                flex: 1;
-                border-bottom: 1px solid #1e293b;
+            .manual-token-details summary {
+                cursor: pointer;
+                user-select: none;
+                color: var(--td-text-primary);
+                font-weight: 600;
+                outline: none;
             }
-            .login-divider span {
-                padding: 0 10px;
+            .manual-token-details summary:hover {
+                color: var(--td-primary);
             }
-            .token-input-row {
+            .manual-token-row {
+                margin-top: 10px;
                 display: flex;
                 gap: 8px;
             }
-            .token-input-row input {
+            .manual-token-row input {
                 flex: 1;
-                background: #0b101b;
-                border: 1px solid #28354e;
-                border-radius: 6px;
+                background: #ffffff;
+                border: 1px solid var(--td-border);
+                border-radius: 8px;
                 padding: 8px 12px;
-                color: #fff;
+                color: var(--td-text-primary);
                 font-size: 12px;
             }
-            .token-input-row button {
-                padding: 8px 14px;
-                background: #334155;
+            .manual-token-row button {
+                padding: 8px 16px;
+                background: var(--td-gradient);
                 color: #fff;
                 border: none;
-                border-radius: 6px;
+                border-radius: 8px;
                 font-size: 12px;
                 font-weight: 600;
                 cursor: pointer;
+                box-shadow: 0 2px 6px rgba(52, 75, 205, 0.2);
             }
-            .token-input-row button:hover {
-                background: #475569;
+            .manual-token-row button:hover {
+                opacity: 0.92;
             }
             .modal-card {
-                background: var(--surface);
-                border: 1px solid var(--border);
-                border-radius: 8px;
+                background: #ffffff;
+                border: 1px solid var(--td-border);
+                border-radius: 16px;
                 padding: 24px;
                 width: 440px;
                 max-width: 90vw;
-                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+                box-shadow: 0 20px 40px rgba(23, 32, 51, 0.12);
+                color: var(--td-text-primary);
             }
             .modal-card h3 {
                 margin: 0 0 12px;
                 font-size: 18px;
+                font-family: 'Montserrat', sans-serif;
+                font-weight: 700;
+                color: var(--td-text-primary);
             }
             .modal-card p {
                 font-size: 13px;
-                color: var(--text-muted);
+                color: var(--td-text-secondary);
                 line-height: 1.5;
                 margin: 0 0 16px;
             }
             .modal-card input {
                 width: 100%;
                 box-sizing: border-box;
-                padding: 8px 12px;
-                background: #0f172a;
-                border: 1px solid var(--border);
-                border-radius: 4px;
-                color: #fff;
+                padding: 9px 12px;
+                background: #ffffff;
+                border: 1px solid var(--td-border);
+                border-radius: 8px;
+                color: var(--td-text-primary);
                 font-size: 13px;
                 margin-bottom: 16px;
+                outline: none;
+            }
+            .modal-card input:focus {
+                border-color: var(--td-primary);
+                box-shadow: 0 0 0 3px rgba(52, 75, 205, 0.12);
             }
             .modal-actions {
                 display: flex;
@@ -538,8 +833,8 @@
         <header id="terminal-header">
             <div class="header-left">
                 <div class="brand">
-                    <span class="badge">TD</span>
-                    <span>Trading Desk</span>
+                    <img src="./logo.png" alt="TD" class="brand-logo" />
+                    <span class="brand-title">Trading Desk</span>
                 </div>
             </div>
             <div class="header-right">
@@ -659,35 +954,145 @@
             </div>
         </div>
 
-        <!-- Fullscreen Login Screen when Session is Expired or Offline -->
+        <!-- Fullscreen 3-Step Onboarding Screen -->
         <div id="login-screen">
-            <div class="login-card">
-                <div class="warning-badge">
-                    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M8 1v9M8 13.5v.5M7 1h2"/>
-                    </svg>
-                    <span>FYERS Session Expired or Not Authenticated</span>
-                </div>
-                <h2>Connect Your FYERS Account</h2>
-                <p class="subtitle">
-                    FYERS daily access tokens expire every 24 hours. Please log in with your credentials to stream real-time Indian stock market data and historical candles.
-                </p>
-
-                <a href="http://127.0.0.1:5000/api/auth/login" class="login-btn-primary">
-                    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M10 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-3M6 11l3-3-3-3M1 8h8"/>
-                    </svg>
-                    <span>Log in with FYERS Web (1-Click)</span>
-                </a>
-
-                <div class="login-divider">
-                    <span>OR ENTER TOKEN MANUALLY</span>
+            <div class="onboarding-container">
+                <div class="onboarding-header">
+                    <div class="onboarding-status-pill" id="screen-status-badge">
+                        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="8" cy="8" r="6" />
+                            <path d="M8 5v3M8 11v.5" />
+                        </svg>
+                        <span id="screen-status-text">Step 1: Configure FYERS API Credentials</span>
+                    </div>
+                    <h2>Connect Your FYERS Account</h2>
+                    <p>
+                        Follow these 3 simple steps to connect your FYERS account to stream real-time Indian stock market data (NSE &amp; BSE) and historical candles.
+                    </p>
                 </div>
 
-                <div class="token-input-row">
-                    <input id="screen-token-input" type="text" placeholder="Paste your 24h FYERS access token here…" />
-                    <button id="screen-token-btn">Connect</button>
+                <!-- 3-Column Sequential Step Cards -->
+                <div class="steps-grid">
+                    <!-- Step 1 Card -->
+                    <div class="step-card active" id="step1-card">
+                        <div class="step-card-header">
+                            <div class="step-badge-title">
+                                <span class="step-badge">1</span>
+                                <span class="step-title">Configure App on FYERS</span>
+                            </div>
+                            <span class="step-status-tag" id="step1-tag">FYERS Dashboard</span>
+                        </div>
+                        <div class="step-body">
+                            <div>
+                                Open the FYERS API Dashboard and edit your app (or create one):
+                            </div>
+                            <button type="button" class="step-action-btn secondary" id="open-fyers-dash-btn">
+                                <span>Open FYERS Dashboard</span>
+                                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 3h2v2M13 3L8 8M6 3H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-3"/>
+                                </svg>
+                            </button>
+                            
+                            <div class="step-field" style="margin-top: 4px;">
+                                <label>Primary IP address* (Your Internet IP)</label>
+                                <div class="step-copy-box">
+                                    <code id="step1-user-ip">Detecting IP…</code>
+                                    <button type="button" id="step1-copy-ip-btn" class="step-copy-btn">Copy IP</button>
+                                </div>
+                            </div>
+
+                            <div class="step-field">
+                                <label>Redirect URL* (Callback URL)</label>
+                                <div class="step-copy-box">
+                                    <code>http://127.0.0.1:5000/api/auth/callback</code>
+                                    <button type="button" id="step1-copy-redirect-btn" class="step-copy-btn">Copy URL</button>
+                                </div>
+                            </div>
+
+                            <div style="font-size: 11px; color: #64748b; line-height: 1.4; margin-top: auto; padding-top: 6px; border-top: 1px solid #1a2234;">
+                                💡 Ensure <strong>Historical data &amp; Quotes</strong> permissions are granted, then click <strong>Save Changes</strong> in FYERS.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2 Card -->
+                    <div class="step-card active" id="step2-card">
+                        <div class="step-card-header">
+                            <div class="step-badge-title">
+                                <span class="step-badge">2</span>
+                                <span class="step-title">Save API Credentials</span>
+                            </div>
+                            <span class="step-status-tag" id="step2-tag">Action Required</span>
+                        </div>
+                        <div class="step-body">
+                            <div>
+                                Copy the <strong>App ID</strong> and <strong>Secret ID</strong> from your FYERS dashboard right panel and enter them here:
+                            </div>
+                            
+                            <div class="step-field">
+                                <label for="screen-app-id">FYERS App ID (Client ID)</label>
+                                <input id="screen-app-id" type="text" placeholder="e.g. XC12345-100" autocomplete="off" />
+                            </div>
+
+                            <div class="step-field">
+                                <label for="screen-secret-key">FYERS Secret ID (Secret Key)</label>
+                                <input id="screen-secret-key" type="password" placeholder="Enter FYERS Secret Key" autocomplete="off" />
+                            </div>
+
+                            <button type="button" id="screen-save-creds-btn" class="step-action-btn success">
+                                <span>Save Credentials</span>
+                            </button>
+
+                            <div id="step2-feedback" class="step-feedback" style="display: none;"></div>
+
+                            <div style="font-size: 11px; color: #64748b; line-height: 1.4; margin-top: auto; padding-top: 6px; border-top: 1px solid #1a2234;">
+                                🔒 Saved safely on your local device only. Never sent to any 3rd party server.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 3 Card -->
+                    <div class="step-card locked" id="step3-card">
+                        <div class="step-card-header">
+                            <div class="step-badge-title">
+                                <span class="step-badge">3</span>
+                                <span class="step-title">Login with FYERS</span>
+                            </div>
+                            <span class="step-status-tag" id="step3-tag">Awaiting Step 2</span>
+                        </div>
+                        <div class="step-body">
+                            <div>
+                                Authenticate your session via your browser. Trading Desk connects automatically upon approval:
+                            </div>
+
+                            <button type="button" id="screen-login-btn" class="step-action-btn disabled" disabled>
+                                <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M10 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-3M6 11l3-3-3-3M1 8h8"/>
+                                </svg>
+                                <span>Log in with FYERS (1-Click)</span>
+                            </button>
+
+                            <div id="screen-waiting-notice" style="display: none; background: rgba(37, 99, 235, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 6px; padding: 10px 12px; font-size: 11px; color: #93c5fd; text-align: center; line-height: 1.5;">
+                                <div style="font-weight: 600; margin-bottom: 2px;">🌐 Authorizing in Your Browser</div>
+                                <div>Complete login in your browser window. Cloudflare verification passes smoothly there.</div>
+                                <button type="button" id="reopen-browser-btn" style="margin-top: 6px; background: none; border: none; color: #60a5fa; cursor: pointer; text-decoration: underline; font-size: 11px;">Reopen Browser Window</button>
+                            </div>
+
+                            <div style="font-size: 11px; color: #64748b; line-height: 1.4; margin-top: auto; padding-top: 6px; border-top: 1px solid #1a2234;">
+                                ✓ Once approved in your browser, the terminal immediately unlocks and streams live candles.
+                            </div>
+                        </div>
+                    </div>
                 </div>
+
+                <!-- Subtle Manual Token Fallback for advanced users -->
+                <details class="manual-token-details">
+                    <summary>Alternative: Enter 24-hour Access Token Manually</summary>
+                    <div class="manual-token-row">
+                        <input id="screen-token-input" type="text" placeholder="Paste your 24h FYERS access token here…" />
+                        <button type="button" id="screen-token-btn">Connect Token</button>
+                    </div>
+                </details>
             </div>
         </div>
 
@@ -696,16 +1101,29 @@
             <div class="modal-card">
                 <h3>FYERS API v3 Authentication</h3>
                 <p>Connect your FYERS trading account to stream live Indian market data and historical bars.</p>
+                
                 <div style="margin-bottom: 16px;">
                     <a id="oauth-login-link" href="http://127.0.0.1:5000/api/auth/login" target="_blank" class="action-btn" style="display:inline-block; text-decoration:none; text-align:center; width:100%; box-sizing:border-box;">
                         Log in via FYERS OAuth Portal
                     </a>
                 </div>
+
                 <p style="margin-top: 16px; font-size: 12px;">Or paste a manual access token directly:</p>
                 <input id="manual-token-input" type="text" placeholder="Paste access token here…" />
-                <div class="modal-actions">
-                    <button id="close-modal-btn" class="action-btn secondary">Close</button>
-                    <button id="save-token-btn" class="action-btn">Save Token</button>
+                
+                <div style="margin-top: 12px; margin-bottom: 16px; border-top: 1px solid var(--border); padding-top: 12px;">
+                    <p style="margin: 0 0 8px; font-size: 12px; font-weight: 600;">Update API Credentials:</p>
+                    <input id="modal-app-id" type="text" placeholder="App ID (e.g. XC12345-100)" style="margin-bottom: 8px;" />
+                    <input id="modal-secret-key" type="password" placeholder="Secret Key" style="margin-bottom: 8px;" />
+                    <button id="modal-save-creds-btn" class="action-btn secondary" style="width: 100%; margin-bottom: 8px;">Save API Credentials</button>
+                </div>
+
+                <div class="modal-actions" style="display: flex; justify-content: space-between;">
+                    <button id="modal-logout-btn" class="action-btn secondary" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.4);">Log Out</button>
+                    <div style="display: flex; gap: 8px;">
+                        <button id="close-modal-btn" class="action-btn secondary">Close</button>
+                        <button id="save-token-btn" class="action-btn">Save Token</button>
+                    </div>
                 </div>
             </div>
         </div>

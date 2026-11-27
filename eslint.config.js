@@ -11,6 +11,20 @@ import tseslint from 'typescript-eslint';
  */
 export default tseslint.config(
     {
+        ignores: [
+            'dist/**',
+            'dist-desktop/**',
+            'dist-electron/**',
+            'release/**',
+            'packages/*/dist/**',
+            'packages/*/registry/**',
+            'node_modules/**',
+            '.scratchpad/**',
+            'server/**',
+            'electron/**',
+        ],
+    },
+    {
         files: ['src/**/*.ts', 'packages/*/src/**/*.ts'],
         languageOptions: {
             parser: tseslint.parser,

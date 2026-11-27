@@ -4,14 +4,53 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const TOKEN_FILE = path.resolve(__dirname, '../.token.json');
+const DATA_DIR = process.env.VELA_DATA_DIR || path.resolve(__dirname, '..');
+const TOKEN_FILE = path.resolve(DATA_DIR, '.token.json');
+const CREDENTIALS_FILE = path.resolve(DATA_DIR, '.credentials.json');
 
 export interface TokenData {
   accessToken: string;
   updatedAt: string;
 }
 
+export interface CredentialsData {
+  appId: string;
+  secretKey: string;
+  redirectUri?: string;
+  updatedAt?: string;
+}
+
 let inMemoryToken: string | null = null;
+let inMemoryCredentials: CredentialsData | null = null;
+
+export function getStoredCredentials(): CredentialsData | null {
+  if (inMemoryCredentials) {
+    return inMemoryCredentials;
+  }
+  try {
+    if (fs.existsSync(CREDENTIALS_FILE)) {
+      const content = fs.readFileSync(CREDENTIALS_FILE, 'utf-8');
+      inMemoryCredentials = JSON.parse(content);
+      return inMemoryCredentials;
+    }
+  } catch {
+    // Ignore read errors
+  }
+  return null;
+}
+
+export function saveStoredCredentials(creds: CredentialsData): void {
+  inMemoryCredentials = creds;
+  try {
+    fs.writeFileSync(
+      CREDENTIALS_FILE,
+      JSON.stringify({ ...creds, updatedAt: new Date().toISOString() }, null, 2),
+      'utf-8'
+    );
+  } catch {
+    // Ignore write errors
+  }
+}
 
 export function getStoredToken(): string | null {
   if (inMemoryToken) {
@@ -53,3 +92,4 @@ export function clearStoredToken(): void {
     // Ignore
   }
 }
+
