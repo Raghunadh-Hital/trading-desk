@@ -25,9 +25,11 @@ export {
     inputDialogBodyStyle,
     DEFAULT_INPUT_TAB,
     tabInputs,
+    groupInputs,
     normalizeDateInput,
     normalizeTimeInput,
     type InputTab,
+    type InputGroup,
 } from './IndicatorInputsDialog';
 
 /** Marker attribute published on the legend container whose pane sits at the plot's top

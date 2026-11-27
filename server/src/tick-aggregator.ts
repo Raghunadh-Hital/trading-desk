@@ -33,7 +33,8 @@ export class TickAggregator {
   private subscribedSymbols = new Set<string>();
   private mockIntervalTimer: NodeJS.Timeout | null = null;
   private lastPrices = new Map<string, number>();
-  private lastFyersTickAt = 0;
+  private lastFyersTickBySymbol = new Map<string, number>();
+  private lastVolTradedToday = new Map<string, number>();
 
   constructor() {
     this.startMockTickGenerator();
@@ -163,8 +164,20 @@ export class TickAggregator {
           const tickList = Array.isArray(tickData) ? tickData : [tickData];
           for (const t of tickList) {
             if (t && t.symbol && typeof t.ltp === 'number') {
-              this.lastFyersTickAt = Date.now();
-              this.processTick(t.symbol, t.ltp, t.vol_traded_today || t.volume || 1, Date.now());
+              this.lastFyersTickBySymbol.set(t.symbol, Date.now());
+              const prevVol = this.lastVolTradedToday.get(t.symbol);
+              let deltaVol = 1;
+              if (typeof t.vol_traded_today === 'number' && t.vol_traded_today > 0) {
+                if (prevVol !== undefined && t.vol_traded_today >= prevVol) {
+                  deltaVol = t.vol_traded_today - prevVol;
+                } else {
+                  deltaVol = t.last_traded_qty || 1;
+                }
+                this.lastVolTradedToday.set(t.symbol, t.vol_traded_today);
+              } else if (typeof t.last_traded_qty === 'number') {
+                deltaVol = t.last_traded_qty;
+              }
+              this.processTick(t.symbol, t.ltp, deltaVol, Date.now());
             }
           }
         });
@@ -195,15 +208,16 @@ export class TickAggregator {
     if (this.mockIntervalTimer) return;
 
     this.mockIntervalTimer = setInterval(() => {
-      // If we haven't received a live FYERS tick for 3.5 seconds (off-hours or quiet symbol),
-      // generate natural micro-fluctuations so candles stay active and moving like TradingView
-      if (Date.now() - this.lastFyersTickAt < 3500) {
-        return; // Real FYERS ticks are streaming; do not synthesize ticks
-      }
-
       if (this.subscribedSymbols.size === 0) return;
 
+      const now = Date.now();
       for (const symbol of this.subscribedSymbols) {
+        // If real FYERS ticks arrived for this symbol within the last 1.2s, let live data stream
+        const lastTick = this.lastFyersTickBySymbol.get(symbol) ?? 0;
+        if (now - lastTick < 1200) {
+          continue;
+        }
+
         let prev = this.lastPrices.get(symbol);
         if (!prev || prev <= 0) {
           // Check if symbol master has a base price
@@ -216,12 +230,16 @@ export class TickAggregator {
           }
         }
 
-        const delta = (Math.random() - 0.49) * (prev * 0.0003);
-        const newPrice = Math.round((prev + delta) * 100) / 100;
+        // Indian exchange minimum tick size is 0.05 Rs (5 paise)
+        const tickSize = 0.05;
+        const rand = Math.random();
+        const direction = rand > 0.51 ? 1 : rand < 0.49 ? -1 : 0;
+        const steps = Math.floor(Math.random() * 2) + 1; // 1 to 2 ticks (0.05 to 0.10)
+        const newPrice = Math.round((prev + direction * steps * tickSize) * 100) / 100;
         const vol = Math.floor(Math.random() * 20) + 1;
         this.processTick(symbol, newPrice, vol);
       }
-    }, 800);
+    }, 500);
   }
 
   public destroy(): void {

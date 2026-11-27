@@ -1038,10 +1038,7 @@ export interface InputTab {
 export function tabInputs(inputs: InputSchema[]): InputTab[] {
     const byTab = new Map<string, InputSchema[]>();
     for (const inp of inputs) {
-        let name = inp.tab && inp.tab.length > 0 ? inp.tab : DEFAULT_INPUT_TAB;
-        if (name === DEFAULT_INPUT_TAB && inp.group && inp.group.toLowerCase().startsWith('style')) {
-            name = 'Style';
-        }
+        const name = inp.tab && inp.tab.length > 0 ? inp.tab : DEFAULT_INPUT_TAB;
         if (!byTab.has(name)) byTab.set(name, []);
         byTab.get(name)!.push(inp);
     }
@@ -1076,7 +1073,7 @@ function valuesBag(row: IndicatorDialogRow): Record<string, InputValue> {
     return bag;
 }
 
-interface InputGroup {
+export interface InputGroup {
     name: string | null;
     /** The section heading's translatable text (its first member's `display.group`). */
     label?: MessageLike;
@@ -1086,29 +1083,31 @@ interface InputGroup {
 }
 
 /**
- * Bucket inputs into `group=` sections (first-seen order — a section appears at its first
- * member's position, ungrouped inputs stay where declared) and, within each, collapse
- * inputs that share an `inline=` id onto one row (Pine convention).
+ * Bucket inputs into `group=` sections in exact declaration order (ungrouped inputs stay
+ * where declared between groups, consecutive members of the same group share its section
+ * header), and collapse inputs that share an `inline=` id onto one row (Pine convention).
  */
-function groupInputs(inputs: InputSchema[]): InputGroup[] {
-    const order: (string | null)[] = [];
-    const byGroup = new Map<string | null, InputSchema[]>();
+export function groupInputs(inputs: InputSchema[]): InputGroup[] {
+    const groups: { name: string | null; members: InputSchema[] }[] = [];
+    let currentGroup: { name: string | null; members: InputSchema[] } | null = null;
+
     for (const inp of inputs) {
-        const g = inp.group && inp.group.length > 0 ? inp.group : null;
-        if (!byGroup.has(g)) {
-            byGroup.set(g, []);
-            order.push(g);
+        const g = inp.group && inp.group.trim().length > 0 ? inp.group.trim() : null;
+        if (!currentGroup || currentGroup.name !== g) {
+            currentGroup = { name: g, members: [inp] };
+            groups.push(currentGroup);
+        } else {
+            currentGroup.members.push(inp);
         }
-        byGroup.get(g)!.push(inp);
     }
-    return order.map((name) => {
-        const members = byGroup.get(name)!;
+
+    return groups.map(({ name, members }) => {
         const label = members.find((m) => m.display?.group)?.display?.group;
         const help = members.find((m) => m.groupHelp)?.groupHelp;
         const rows: InputSchema[][] = [];
         const inlineRowIndex = new Map<string, number>();
         for (const inp of members) {
-            const inline = inp.inline && inp.inline.length > 0 ? inp.inline : null;
+            const inline = inp.inline && inp.inline.trim().length > 0 ? inp.inline.trim() : null;
             if (inline && inlineRowIndex.has(inline)) {
                 rows[inlineRowIndex.get(inline)!]!.push(inp);
             } else {
