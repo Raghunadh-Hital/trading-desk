@@ -89,7 +89,7 @@ To display live, real-time Indian stock market charts without charging users mon
 
 You do **not** need Node.js, Git, or VS Code installed to use Trading Desk.
 
-1. Go to the [Releases](https://github.com/your-username/trading-desk/releases) page on GitHub.
+1. Go to the [Releases](https://github.com/Raghunadh-Hital/trading-desk/releases) page on GitHub.
 2. Download either:
    - **Installer**: `Trading Desk Setup 0.10.17.exe` (Recommended: installs silently, creates a Desktop shortcut with the official icon, and adds it to your Start menu).
    - **Portable**: `Trading Desk 0.10.17.exe` (Runs directly without installation).
