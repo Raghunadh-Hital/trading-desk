@@ -259,9 +259,10 @@ export class FyersProvider implements DataProvider {
         let pendingBar: OHLCV | null = null;
         let throttleTimer: ReturnType<typeof setTimeout> | null = null;
 
+        const THROTTLE_MS = 60; // 60ms (~16 FPS) matches TradingView responsive candle glide without starving render loop
         const emitThrottled = (bar: OHLCV) => {
             const now = Date.now();
-            if (now - lastEmittedMs >= 1000) {
+            if (now - lastEmittedMs >= THROTTLE_MS) {
                 lastEmittedMs = now;
                 onBar(bar);
             } else {
@@ -274,7 +275,7 @@ export class FyersProvider implements DataProvider {
                             onBar(pendingBar);
                             pendingBar = null;
                         }
-                    }, 1000 - (now - lastEmittedMs));
+                    }, THROTTLE_MS - (now - lastEmittedMs));
                 }
             }
         };

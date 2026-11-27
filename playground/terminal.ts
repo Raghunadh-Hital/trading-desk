@@ -172,6 +172,10 @@ const ws = new VelaWorkspace('#chart', {
     timezone: 'Asia/Kolkata',
     timeframes: ['1', '5', '15', '30', '60', '120', '240', 'D', 'W', 'M'],
     storage,
+    animations: {
+        liveBar: 120, // 120ms smooth fluid glide on forming candle wicks/body
+    },
+    currentPriceLine: true,
     sync: {
         crosshair: true,
         style: true,
@@ -256,7 +260,303 @@ function updateTabTitle(price?: number | null, symbolOverride?: string): void {
     }
 }
 
-// Wire live price updates and tab title
+// 2. Storage Keys & Multi-Script State for Persistence
+const SCRIPT_STORAGE_KEY = 'vela-terminal-user-pinescript';
+const INDICATOR_STATE_KEY = 'vela-terminal-indicator-state';
+const ALL_IN_ONE_ID = 'user-pine-indicator';
+const MRS_INDICATOR_ID = 'mrs-pine-indicator';
+const INDICATOR_ID = ALL_IN_ONE_ID; // alias for compatibility
+
+interface SavedIndicatorState {
+    applied: boolean;
+    inputs?: Record<string, any>;
+    allInputs?: Record<string, Record<string, any>>;
+}
+
+function getSavedIndicatorState(): SavedIndicatorState | null {
+    try {
+        const raw = localStorage.getItem(INDICATOR_STATE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+}
+
+function sanitizePineScript(scriptCode: string): string {
+    let code = scriptCode
+        .replace(/^\s*import\s+TradingView\/ta\/\d+/gm, '// import TradingView/ta/10 (built-in in PineTS)')
+        .replace(/runtime\.error\s*\([^\)]+\)/g, 'na');
+
+    // Upgrade v3/v4 to v5 if detected
+    if (/^\s*\/\/\s*@version=[34]/m.test(code) || /^\s*study\s*\(/m.test(code)) {
+        code = code
+            .replace(/^\s*\/\/\s*@version=[34]/m, '//@version=5')
+            .replace(/^\s*study\s*\(([^)]*)\)/m, (_match, args) => {
+                if (!args.includes('overlay')) {
+                    return `indicator(${args}, overlay=false)`;
+                }
+                return `indicator(${args})`;
+            })
+            .replace(/input\s*\(\s*title\s*=\s*(".*?")\s*,\s*type\s*=\s*symbol\s*,\s*defval\s*=\s*(".*?")\s*\)/g, 'input.symbol($2, $1)')
+            .replace(/input\s*\(\s*title\s*=\s*(".*?")\s*,\s*defval\s*=\s*(".*?")\s*,\s*options\s*=\s*(\[[^\]]*\])\s*\)/g, 'input.string($2, $1, options=$3)')
+            .replace(/input\s*\(\s*title\s*=\s*(".*?")\s*,\s*defval\s*=\s*(\d+)\s*\)/g, 'input.int($2, $1)')
+            .replace(/\bperiod\b/g, 'timeframe.period')
+            .replace(/\bsecurity\s*\(/g, 'request.security(')
+            .replace(/\bwma\s*\(/g, 'ta.wma(')
+            .replace(/\bsma\s*\(/g, 'ta.sma(')
+            .replace(/\bema\s*\(/g, 'ta.ema(')
+            .replace(/\bsign\s*\(/g, 'math.sign(')
+            .replace(/color\s*\(\s*green\s*,\s*(\d+)\s*\)/g, 'color.new(#26a69a, $1)')
+            .replace(/color\s*\(\s*red\s*,\s*(\d+)\s*\)/g, 'color.new(#ef5350, $1)')
+            .replace(/linestyle\s*=\s*dashed/g, 'linestyle=hline.style_dashed')
+            .replace(/hline\s*\(\s*price\s*=\s*0/g, 'hline(0');
+    }
+
+    // Enhance MRS script with zero baseline style controls if missing
+    if ((code.includes('calc_mrs') || code.includes('mrs_index')) && !code.includes('show_zero')) {
+        code = code.replace(/val\s*=\s*close/m, 'show_zero = input.bool(true, "Zero baseline", group="Style", inline="zero")\ncol_zero = input.color(#7e57c2, "", group="Style", inline="zero")\nwidth_zero = input.int(1, "Width", minval=1, maxval=5, group="Style", inline="zero")\nval = close');
+        if (!code.includes('plot(show_zero')) {
+            code = code.replace(/(plot\([^)]*mrs_industry[^)]*\)[^\n]*)/, '$1\nplot(show_zero ? 0.0 : na, "Zero baseline", color=col_zero, linewidth=width_zero)\nhline(0, "Zero baseline", color=#7e57c2, linestyle=hline.style_solid)');
+        }
+    }
+    return code;
+}
+
+interface SavedPineScript {
+    id: string;
+    title: string;
+    code: string;
+    updatedAt: number;
+    isDefault?: boolean;
+}
+
+const SAVED_SCRIPTS_KEY = 'vela-terminal-saved-pine-scripts-v2';
+const ACTIVE_SCRIPT_ID_KEY = 'vela-terminal-active-pine-script-id-v2';
+
+function getDefaultScripts(): SavedPineScript[] {
+    const legacyCode = localStorage.getItem(SCRIPT_STORAGE_KEY);
+    const hasLegacyCustom = legacyCode && !legacyCode.includes('runtime.error') && legacyCode.includes('TF Demand');
+    return [
+        {
+            id: 'all-in-one',
+            title: 'All in One (Demand/Supply)',
+            code: hasLegacyCustom ? legacyCode : PINE_TEMPLATES.userAllInOne,
+            updatedAt: Date.now(),
+            isDefault: true,
+        },
+        {
+            id: 'mrs',
+            title: 'Mansfield Relative Strength (MRS)',
+            code: PINE_TEMPLATES.mrs,
+            updatedAt: Date.now() - 3600000,
+            isDefault: true,
+        },
+        {
+            id: 'ema-cross',
+            title: 'EMA Cross (v5)',
+            code: PINE_TEMPLATES.emaCross,
+            updatedAt: Date.now() - 7200000,
+        },
+        {
+            id: 'rsi-oscillator',
+            title: 'RSI Oscillator',
+            code: PINE_TEMPLATES.rsi,
+            updatedAt: Date.now() - 10800000,
+        },
+    ];
+}
+
+function loadSavedScripts(): SavedPineScript[] {
+    try {
+        const raw = localStorage.getItem(SAVED_SCRIPTS_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                return parsed;
+            }
+        }
+    } catch {
+        // Fall back to defaults
+    }
+    const def = getDefaultScripts();
+    saveSavedScripts(def);
+    return def;
+}
+
+function saveSavedScripts(scripts: SavedPineScript[]): void {
+    localStorage.setItem(SAVED_SCRIPTS_KEY, JSON.stringify(scripts));
+}
+
+let savedScripts = loadSavedScripts();
+let activeScriptId = localStorage.getItem(ACTIVE_SCRIPT_ID_KEY) || savedScripts[0].id;
+if (!savedScripts.some((s) => s.id === activeScriptId)) {
+    activeScriptId = savedScripts[0].id;
+}
+let activeScript = savedScripts.find((s) => s.id === activeScriptId)!;
+let activeScriptOriginalCode = activeScript.code;
+
+// 3. Robust Script Application and Indicator Synchronizer
+let isCompiling = false;
+
+async function applyScript(
+    scriptCode: string,
+    targetId?: string,
+    targetChart?: any,
+    overrideInputs?: Record<string, any>
+): Promise<{ ok: boolean; title?: string; error?: string }> {
+    const raw = scriptCode.trim();
+    if (!raw) return { ok: false, error: 'Empty script' };
+    const sanitizedScript = sanitizePineScript(raw);
+    const isMRS = targetId === MRS_INDICATOR_ID || raw.includes('Mansfield') || raw.includes('MRS');
+    const id = targetId ?? (isMRS ? MRS_INDICATOR_ID : ALL_IN_ONE_ID);
+
+    const savedState = getSavedIndicatorState();
+    const existingInputs = overrideInputs ?? (savedState?.allInputs?.[id] ?? (id === ALL_IN_ONE_ID ? savedState?.inputs : undefined));
+
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+    const compileTimeout = new Promise<never>((_, reject) => {
+        timerId = setTimeout(() => reject(new Error('Compilation timed out after 15s')), 15000);
+    });
+
+    try {
+        const c = targetChart ?? ws.chart;
+        const existing = c.indicators().find((h: any) => h.id === id);
+        if (existing) {
+            if (existing.source === sanitizedScript) {
+                // If the script code is already running, just update inputs / styling
+                if (existingInputs && Object.keys(existingInputs).length > 0) {
+                    try {
+                        existing.setInputs(existingInputs);
+                    } catch {
+                        // ignore
+                    }
+                }
+                return { ok: true, title: existing.title || 'Pine Script Indicator' };
+            }
+            try {
+                existing.remove();
+            } catch {
+                // Ignore removal failure
+            }
+        }
+
+        const runPromise = c.runIndicator(sanitizedScript, {
+            id,
+            language: 'pine',
+            inputs: existingInputs,
+        });
+
+        const result = await Promise.race([runPromise, compileTimeout]);
+        if (timerId) clearTimeout(timerId);
+
+        if (result.ok) {
+            return { ok: true, title: result.handle?.title || 'Pine Script Indicator' };
+        } else {
+            return { ok: false, error: result.error?.message || 'Unknown error' };
+        }
+    } catch (err: any) {
+        if (timerId) clearTimeout(timerId);
+        return { ok: false, error: err?.message || String(err) };
+    }
+}
+
+let isSyncingLayout = false;
+let syncLayoutDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function triggerSyncAllIndicatorsAcrossLayout(delay = 80): void {
+    if (syncLayoutDebounceTimer) clearTimeout(syncLayoutDebounceTimer);
+    syncLayoutDebounceTimer = setTimeout(() => {
+        void syncAllIndicatorsAcrossLayout();
+    }, delay);
+}
+
+/**
+ * Copies and synchronizes all indicators, Pine scripts, and custom settings
+ * from the primary chart (Chart 1) across all layout cells (2, 3, 4 panes).
+ */
+async function syncAllIndicatorsAcrossLayout(): Promise<void> {
+    if (isSyncingLayout) return;
+    isSyncingLayout = true;
+    try {
+        const cells = ws.cells();
+        if (cells.length === 0) return;
+
+        // Cell 0 is the primary / first chart
+        const primaryCell = cells[0];
+        const primaryChart = primaryCell.chart;
+        const activeStyle = primaryCell.priceStyle || ws.active?.priceStyle || 'candles';
+
+        interface IndicatorSpec {
+            id: string;
+            source: string;
+            inputs?: Record<string, any>;
+        }
+        const specsToApply: IndicatorSpec[] = [];
+        const savedState = getSavedIndicatorState();
+
+        // 1. Gather all indicators that belong on the layout from primary chart
+        const primaryHandles = primaryChart.indicators();
+        if (primaryHandles.length > 0) {
+            for (const h of primaryHandles) {
+                let code = h.source;
+                if (!code) {
+                    if (h.id === ALL_IN_ONE_ID || h.id === 'all-in-one') {
+                        code = ((window as any).terminalEditor ? (window as any).terminalEditor.getValue().trim() : '') ||
+                            savedScripts.find((s) => s.id === 'all-in-one')?.code ||
+                            PINE_TEMPLATES.userAllInOne;
+                    } else if (h.id === MRS_INDICATOR_ID || h.id === 'mrs') {
+                        code = savedScripts.find((s) => s.id === 'mrs')?.code || PINE_TEMPLATES.mrs;
+                    } else if (activeScript && h.id === activeScript.id) {
+                        code = ((window as any).terminalEditor ? (window as any).terminalEditor.getValue().trim() : '') || activeScript.code;
+                    } else {
+                        const found = savedScripts.find((s) => s.id === h.id);
+                        if (found) code = found.code;
+                    }
+                }
+                if (code) {
+                    const inputs = h.inputValues() || savedState?.allInputs?.[h.id] || (h.id === ALL_IN_ONE_ID ? savedState?.inputs : undefined);
+                    specsToApply.push({ id: h.id, source: code, inputs });
+                }
+            }
+        }
+
+        // If primary chart had no indicators yet, populate from saved defaults
+        if (specsToApply.length === 0) {
+            const defaultAllInOne = savedScripts.find((s) => s.id === 'all-in-one') || activeScript;
+            specsToApply.push({
+                id: ALL_IN_ONE_ID,
+                source: defaultAllInOne.code,
+                inputs: savedState?.allInputs?.[ALL_IN_ONE_ID] ?? savedState?.inputs,
+            });
+            const mrsScript = savedScripts.find((s) => s.id === 'mrs') || { code: PINE_TEMPLATES.mrs };
+            specsToApply.push({
+                id: MRS_INDICATOR_ID,
+                source: mrsScript.code,
+                inputs: savedState?.allInputs?.[MRS_INDICATOR_ID],
+            });
+        }
+
+        // 2. Apply to EVERY cell in the layout (including new columns/panes) simultaneously
+        await Promise.all(
+            cells.map(async (cell) => {
+                // Inherit price style (Candles, Heikin Ashi, etc.)
+                if (activeStyle && typeof cell.setPriceStyle === 'function' && cell.priceStyle !== activeStyle) {
+                    cell.setPriceStyle(activeStyle);
+                }
+
+                await cell.chart.ready();
+
+                for (const spec of specsToApply) {
+                    await applyScript(spec.source, spec.id, cell.chart, spec.inputs);
+                }
+            })
+        );
+    } finally {
+        isSyncingLayout = false;
+    }
+}
+
+// 4. Wire cell events, live prices, and input persistence
 function wireCellEvents(cellChart: any): void {
     cellChart.on('bar', (bar: any) => {
         if (cellChart === ws.chart && bar && bar.close != null) {
@@ -277,6 +577,7 @@ function wireCellEvents(cellChart: any): void {
         }
     });
 
+    // Synchronize indicator input/styling edits across ALL layout cells
     cellChart.on('indicator:inputs', ({ id }: { id: string }) => {
         const handle = cellChart.indicators().find((h: any) => h.id === id);
         if (handle) {
@@ -286,6 +587,20 @@ function wireCellEvents(cellChart: any): void {
             saved.allInputs[id] = currentInputs;
             if (id === ALL_IN_ONE_ID) saved.inputs = currentInputs;
             localStorage.setItem(INDICATOR_STATE_KEY, JSON.stringify(saved));
+
+            // Replicate this updated styling/inputs to all other cells immediately!
+            for (const cell of ws.cells()) {
+                if (cell.chart !== cellChart) {
+                    const h = cell.chart.indicators().find((item: any) => item.id === id);
+                    if (h) {
+                        try {
+                            h.setInputs(currentInputs);
+                        } catch {
+                            // ignore
+                        }
+                    }
+                }
+            }
         }
     });
 
@@ -294,55 +609,38 @@ function wireCellEvents(cellChart: any): void {
         if (existing.allInputs) delete existing.allInputs[id];
         if (id === ALL_IN_ONE_ID) existing.applied = false;
         localStorage.setItem(INDICATOR_STATE_KEY, JSON.stringify(existing));
+
+        // Sync removal across all cells
+        for (const cell of ws.cells()) {
+            if (cell.chart !== cellChart) {
+                const h = cell.chart.indicators().find((item: any) => item.id === id);
+                if (h) {
+                    try {
+                        h.remove();
+                    } catch {
+                        // ignore
+                    }
+                }
+            }
+        }
     });
 }
 
 // Wire the active chart immediately
 wireCellEvents(ws.chart);
 
-// Helper to apply current active script & MRS indicators to a chart
-async function syncIndicatorsToChart(c: any): Promise<void> {
-    const savedState = getSavedIndicatorState();
-    const scriptToRun = editor ? editor.getValue().trim() : initialCode;
-    const finalAllInOne = scriptToRun || initialCode;
-    if (!savedState || savedState.applied !== false) {
-        await applyScript(finalAllInOne, ALL_IN_ONE_ID, c);
-    }
-    await applyScript(PINE_TEMPLATES.mrs, MRS_INDICATOR_ID, c);
-}
-
-// Wire any newly created cells when switching layouts (e.g. 2h, 4, 8)
+// When new cells are created (e.g. 2h, 3, 4 layout), wire them and sync indicators
 ws.on('cell:created', ({ id }) => {
     const cell = ws.cell(id);
     if (cell) {
         wireCellEvents(cell.chart);
-        // Inherit price style (e.g. Heikin Ashi, Candles) from active cell
-        const activeStyle = ws.active?.priceStyle || ws.chart?.renderer?.get?.('priceStyle') || 'candles';
-        if (activeStyle && typeof cell.setPriceStyle === 'function') {
-            cell.setPriceStyle(activeStyle);
-        }
-        // Automatically apply the indicators and style to the newly minted chart
-        void cell.chart.ready().then(async () => {
-            await syncIndicatorsToChart(cell.chart);
-        });
+        triggerSyncAllIndicatorsAcrossLayout(50);
     }
 });
 
 // When layout changes, ensure every cell in the new grid carries the indicators and styling
 ws.on('layout:changed', () => {
-    const activeStyle = ws.active?.priceStyle;
-    for (const cell of ws.cells()) {
-        if (activeStyle && typeof cell.setPriceStyle === 'function' && cell.priceStyle !== activeStyle) {
-            cell.setPriceStyle(activeStyle);
-        }
-        void cell.chart.ready().then(async () => {
-            const hasAllInOne = cell.chart.indicators().some((h: any) => h.id === ALL_IN_ONE_ID);
-            const hasMRS = cell.chart.indicators().some((h: any) => h.id === MRS_INDICATOR_ID);
-            if (!hasAllInOne || !hasMRS) {
-                await syncIndicatorsToChart(cell.chart);
-            }
-        });
-    }
+    triggerSyncAllIndicatorsAcrossLayout(80);
 });
 
 ws.on('cell:active', () => {
@@ -517,142 +815,6 @@ monaco.languages.setMonarchTokensProvider('pinescript', {
     },
 });
 
-// 5. Storage Keys & Initial Setup for TradingView-style Persistence
-const SCRIPT_STORAGE_KEY = 'vela-terminal-user-pinescript';
-const INDICATOR_STATE_KEY = 'vela-terminal-indicator-state';
-const ALL_IN_ONE_ID = 'user-pine-indicator';
-const MRS_INDICATOR_ID = 'mrs-pine-indicator';
-const INDICATOR_ID = ALL_IN_ONE_ID; // alias for compatibility
-
-interface SavedIndicatorState {
-    applied: boolean;
-    inputs?: Record<string, any>;
-    allInputs?: Record<string, Record<string, any>>;
-}
-
-function getSavedIndicatorState(): SavedIndicatorState | null {
-    try {
-        const raw = localStorage.getItem(INDICATOR_STATE_KEY);
-        return raw ? JSON.parse(raw) : null;
-    } catch {
-        return null;
-    }
-}
-
-function sanitizePineScript(scriptCode: string): string {
-    let code = scriptCode
-        .replace(/^\s*import\s+TradingView\/ta\/\d+/gm, '// import TradingView/ta/10 (built-in in PineTS)')
-        .replace(/runtime\.error\s*\([^\)]+\)/g, 'na');
-
-    // Upgrade v3/v4 to v5 if detected
-    if (/^\s*\/\/\s*@version=[34]/m.test(code) || /^\s*study\s*\(/m.test(code)) {
-        code = code
-            .replace(/^\s*\/\/\s*@version=[34]/m, '//@version=5')
-            .replace(/^\s*study\s*\(([^)]*)\)/m, (_match, args) => {
-                if (!args.includes('overlay')) {
-                    return `indicator(${args}, overlay=false)`;
-                }
-                return `indicator(${args})`;
-            })
-            .replace(/input\s*\(\s*title\s*=\s*(".*?")\s*,\s*type\s*=\s*symbol\s*,\s*defval\s*=\s*(".*?")\s*\)/g, 'input.symbol($2, $1)')
-            .replace(/input\s*\(\s*title\s*=\s*(".*?")\s*,\s*defval\s*=\s*(".*?")\s*,\s*options\s*=\s*(\[[^\]]*\])\s*\)/g, 'input.string($2, $1, options=$3)')
-            .replace(/input\s*\(\s*title\s*=\s*(".*?")\s*,\s*defval\s*=\s*(\d+)\s*\)/g, 'input.int($2, $1)')
-            .replace(/\bperiod\b/g, 'timeframe.period')
-            .replace(/\bsecurity\s*\(/g, 'request.security(')
-            .replace(/\bwma\s*\(/g, 'ta.wma(')
-            .replace(/\bsma\s*\(/g, 'ta.sma(')
-            .replace(/\bema\s*\(/g, 'ta.ema(')
-            .replace(/\bsign\s*\(/g, 'math.sign(')
-            .replace(/color\s*\(\s*green\s*,\s*(\d+)\s*\)/g, 'color.new(#26a69a, $1)')
-            .replace(/color\s*\(\s*red\s*,\s*(\d+)\s*\)/g, 'color.new(#ef5350, $1)')
-            .replace(/linestyle\s*=\s*dashed/g, 'linestyle=hline.style_dashed')
-            .replace(/hline\s*\(\s*price\s*=\s*0/g, 'hline(0');
-    }
-
-    // Enhance MRS script with zero baseline style controls if missing
-    if ((code.includes('calc_mrs') || code.includes('mrs_index')) && !code.includes('show_zero')) {
-        code = code.replace(/val\s*=\s*close/m, 'show_zero = input.bool(true, "Zero baseline", group="Style", inline="zero")\ncol_zero = input.color(#7e57c2, "", group="Style", inline="zero")\nwidth_zero = input.int(1, "Width", minval=1, maxval=5, group="Style", inline="zero")\nval = close');
-        if (!code.includes('plot(show_zero')) {
-            code = code.replace(/(plot\([^)]*mrs_industry[^)]*\)[^\n]*)/, '$1\nplot(show_zero ? 0.0 : na, "Zero baseline", color=col_zero, linewidth=width_zero)\nhline(0, "Zero baseline", color=#7e57c2, linestyle=hline.style_solid)');
-        }
-    }
-    return code;
-}
-
-// 6. Multi-Script Storage Model & Library (TradingView Style)
-interface SavedPineScript {
-    id: string;
-    title: string;
-    code: string;
-    updatedAt: number;
-    isDefault?: boolean;
-}
-
-const SAVED_SCRIPTS_KEY = 'vela-terminal-saved-pine-scripts-v2';
-const ACTIVE_SCRIPT_ID_KEY = 'vela-terminal-active-pine-script-id-v2';
-
-function getDefaultScripts(): SavedPineScript[] {
-    const legacyCode = localStorage.getItem(SCRIPT_STORAGE_KEY);
-    const hasLegacyCustom = legacyCode && !legacyCode.includes('runtime.error') && legacyCode.includes('TF Demand');
-    return [
-        {
-            id: 'all-in-one',
-            title: 'All in One (Demand/Supply)',
-            code: hasLegacyCustom ? legacyCode : PINE_TEMPLATES.userAllInOne,
-            updatedAt: Date.now(),
-            isDefault: true,
-        },
-        {
-            id: 'mrs',
-            title: 'Mansfield Relative Strength (MRS)',
-            code: PINE_TEMPLATES.mrs,
-            updatedAt: Date.now() - 3600000,
-            isDefault: true,
-        },
-        {
-            id: 'ema-cross',
-            title: 'EMA Cross (v5)',
-            code: PINE_TEMPLATES.emaCross,
-            updatedAt: Date.now() - 7200000,
-        },
-        {
-            id: 'rsi-oscillator',
-            title: 'RSI Oscillator',
-            code: PINE_TEMPLATES.rsi,
-            updatedAt: Date.now() - 10800000,
-        },
-    ];
-}
-
-function loadSavedScripts(): SavedPineScript[] {
-    try {
-        const raw = localStorage.getItem(SAVED_SCRIPTS_KEY);
-        if (raw) {
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-                return parsed;
-            }
-        }
-    } catch {
-        // Fall back to defaults
-    }
-    const def = getDefaultScripts();
-    saveSavedScripts(def);
-    return def;
-}
-
-function saveSavedScripts(scripts: SavedPineScript[]): void {
-    localStorage.setItem(SAVED_SCRIPTS_KEY, JSON.stringify(scripts));
-}
-
-let savedScripts = loadSavedScripts();
-let activeScriptId = localStorage.getItem(ACTIVE_SCRIPT_ID_KEY) || savedScripts[0].id;
-if (!savedScripts.some((s) => s.id === activeScriptId)) {
-    activeScriptId = savedScripts[0].id;
-}
-let activeScript = savedScripts.find((s) => s.id === activeScriptId)!;
-let activeScriptOriginalCode = activeScript.code;
-
 // 7. Initialize Monaco Editor
 const monacoContainer = document.getElementById('monaco-container')!;
 const editor = monaco.editor.create(monacoContainer, {
@@ -666,6 +828,7 @@ const editor = monaco.editor.create(monacoContainer, {
     scrollBeyondLastLine: false,
     tabSize: 4,
 });
+(window as any).terminalEditor = editor;
 
 // UI elements
 const editorPanel = document.getElementById('editor-panel')!;
@@ -823,16 +986,15 @@ function renderScriptsList(): void {
                     </svg>
                     <span style="margin-left:4px;">Run</span>
                 </button>
-                ${
-                    savedScripts.length > 1
-                        ? `
+                ${savedScripts.length > 1
+                ? `
                 <button class="script-item-btn delete delete-btn" title="Delete Script">
                     <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M3 4h10M6 4V2h4v2M5 4v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V4"/>
                     </svg>
                 </button>`
-                        : ''
-                }
+                : ''
+            }
             </div>
         `;
 
@@ -1010,79 +1172,6 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-// Listen to chart indicator settings/input edits and persist them immediately
-ws.chart.on('indicator:inputs', ({ id }) => {
-    const handle = ws.chart.indicators().find((h) => h.id === id);
-    if (handle) {
-        const currentInputs = handle.inputValues();
-        const saved = getSavedIndicatorState() || { applied: true, allInputs: {} };
-        saved.allInputs ??= {};
-        saved.allInputs[id] = currentInputs;
-        if (id === ALL_IN_ONE_ID) saved.inputs = currentInputs;
-        localStorage.setItem(INDICATOR_STATE_KEY, JSON.stringify(saved));
-    }
-});
-
-ws.chart.on('indicator:removed', ({ id }) => {
-    const existing = getSavedIndicatorState() || { applied: false, allInputs: {} };
-    if (existing.allInputs) delete existing.allInputs[id];
-    if (id === ALL_IN_ONE_ID) existing.applied = false;
-    localStorage.setItem(INDICATOR_STATE_KEY, JSON.stringify(existing));
-});
-
-// 12. "Apply to Chart" Execution
-let isCompiling = false;
-
-async function applyScript(
-    scriptCode: string,
-    targetId?: string,
-    targetChart?: any
-): Promise<{ ok: boolean; title?: string; error?: string }> {
-    const raw = scriptCode.trim();
-    if (!raw) return { ok: false, error: 'Empty script' };
-    const sanitizedScript = sanitizePineScript(raw);
-    const isMRS = targetId === MRS_INDICATOR_ID || raw.includes('Mansfield') || raw.includes('MRS');
-    const id = targetId ?? (isMRS ? MRS_INDICATOR_ID : ALL_IN_ONE_ID);
-
-    const savedState = getSavedIndicatorState();
-    const existingInputs = savedState?.allInputs?.[id] ?? (id === ALL_IN_ONE_ID ? savedState?.inputs : undefined);
-
-    let timerId: ReturnType<typeof setTimeout> | null = null;
-    const compileTimeout = new Promise<never>((_, reject) => {
-        timerId = setTimeout(() => reject(new Error('Compilation timed out after 15s')), 15000);
-    });
-
-    try {
-        const c = targetChart ?? ws.chart;
-        const existing = c.indicators().find((h: any) => h.id === id);
-        if (existing) {
-            try {
-                existing.remove();
-            } catch {
-                // Ignore removal failure
-            }
-        }
-
-        const runPromise = c.runIndicator(sanitizedScript, {
-            id,
-            language: 'pine',
-            inputs: existingInputs,
-        });
-
-        const result = await Promise.race([runPromise, compileTimeout]);
-        if (timerId) clearTimeout(timerId);
-
-        if (result.ok) {
-            return { ok: true, title: result.handle?.title || 'Pine Script Indicator' };
-        } else {
-            return { ok: false, error: result.error?.message || 'Unknown error' };
-        }
-    } catch (err: any) {
-        if (timerId) clearTimeout(timerId);
-        return { ok: false, error: err?.message || String(err) };
-    }
-}
-
 async function applyCurrentScript(): Promise<void> {
     if (isCompiling) return;
     const scriptCode = editor.getValue().trim();
@@ -1128,16 +1217,9 @@ applyScriptBtn.addEventListener('click', () => {
     void applyCurrentScript();
 });
 
-// Auto-apply indicators on initial load once chart is ready
+// Auto-apply indicators on initial load once chart is ready across all layout cells
 setTimeout(async () => {
-    const savedState = getSavedIndicatorState();
-    if (!savedState || savedState.applied !== false) {
-        const defaultScript = savedScripts.find((s) => s.id === 'all-in-one') || activeScript;
-        await applyScript(defaultScript.code, ALL_IN_ONE_ID);
-    }
-    // Also apply Mansfield Relative Strength (MRS) to the separate bottom pane
-    const mrsScript = savedScripts.find((s) => s.id === 'mrs') || { code: PINE_TEMPLATES.mrs };
-    await applyScript(mrsScript.code, MRS_INDICATOR_ID);
+    await syncAllIndicatorsAcrossLayout();
     focusCMP();
 }, 1000);
 

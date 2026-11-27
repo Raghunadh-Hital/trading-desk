@@ -131,7 +131,7 @@ export function createServerApp() {
       if (result.s === 'ok' && Array.isArray(result.candles) && result.candles.length > 0) {
         const lastCandle = result.candles[result.candles.length - 1];
         if (lastCandle && typeof lastCandle.close === 'number') {
-          tickAggregator.setInitialPrice(symbol, lastCandle.close);
+          tickAggregator.setInitialBar(symbol, resolution, lastCandle);
         }
       }
 

@@ -33,6 +33,7 @@ export class TickAggregator {
   private subscribedSymbols = new Set<string>();
   private mockIntervalTimer: NodeJS.Timeout | null = null;
   private lastPrices = new Map<string, number>();
+  private lastFyersTickAt = 0;
 
   constructor() {
     this.startMockTickGenerator();
@@ -110,11 +111,16 @@ export class TickAggregator {
   public setInitialPrice(symbol: string, price: number): void {
     if (price > 0) {
       this.lastPrices.set(symbol, price);
-      // Clean up any stale forming bar for this symbol that may have been generated with an uncalibrated price
-      for (const key of this.activeBars.keys()) {
-        if (key.startsWith(`${symbol}:`)) {
-          this.activeBars.delete(key);
-        }
+    }
+  }
+
+  public setInitialBar(symbol: string, resolution: string, bar: VelaBar): void {
+    if (bar && bar.close > 0) {
+      this.lastPrices.set(symbol, bar.close);
+      const key = `${symbol}:${resolution}`;
+      const existing = this.activeBars.get(key);
+      if (!existing || existing.time <= bar.time) {
+        this.activeBars.set(key, { ...bar });
       }
     }
   }
@@ -146,10 +152,6 @@ export class TickAggregator {
 
         this.socketInstance.on('connect', () => {
           console.log('[TickAggregator] FYERS DataSocket connected successfully.');
-          if (this.mockIntervalTimer) {
-            clearInterval(this.mockIntervalTimer);
-            this.mockIntervalTimer = null;
-          }
           if (this.subscribedSymbols.size > 0) {
             this.socketInstance.subscribe(Array.from(this.subscribedSymbols));
           }
@@ -161,6 +163,7 @@ export class TickAggregator {
           const tickList = Array.isArray(tickData) ? tickData : [tickData];
           for (const t of tickList) {
             if (t && t.symbol && typeof t.ltp === 'number') {
+              this.lastFyersTickAt = Date.now();
               this.processTick(t.symbol, t.ltp, t.vol_traded_today || t.volume || 1, Date.now());
             }
           }
@@ -192,31 +195,33 @@ export class TickAggregator {
     if (this.mockIntervalTimer) return;
 
     this.mockIntervalTimer = setInterval(() => {
-      // If we don't have an active FYERS socket connected, generate ticks for subscribed symbols
-      if (!this.socketInstance || !this.socketInstance.isConnected?.()) {
-        if (this.subscribedSymbols.size === 0) return;
-
-        for (const symbol of this.subscribedSymbols) {
-          let prev = this.lastPrices.get(symbol);
-          if (!prev || prev <= 0) {
-            // Check if symbol master has a base price
-            const known = symbolService.getAllSymbols().find((s) => s.symbol === symbol);
-            if (known && known.basePrice > 0) {
-              prev = known.basePrice;
-              this.lastPrices.set(symbol, prev);
-            } else {
-              // Do NOT generate random ticks if the true baseline price is unknown yet!
-              continue;
-            }
-          }
-
-          const delta = (Math.random() - 0.49) * (prev * 0.0004);
-          const newPrice = Math.round((prev + delta) * 100) / 100;
-          const vol = Math.floor(Math.random() * 50) + 1;
-          this.processTick(symbol, newPrice, vol);
-        }
+      // If we haven't received a live FYERS tick for 3.5 seconds (off-hours or quiet symbol),
+      // generate natural micro-fluctuations so candles stay active and moving like TradingView
+      if (Date.now() - this.lastFyersTickAt < 3500) {
+        return; // Real FYERS ticks are streaming; do not synthesize ticks
       }
-    }, 1500);
+
+      if (this.subscribedSymbols.size === 0) return;
+
+      for (const symbol of this.subscribedSymbols) {
+        let prev = this.lastPrices.get(symbol);
+        if (!prev || prev <= 0) {
+          // Check if symbol master has a base price
+          const known = symbolService.getAllSymbols().find((s) => s.symbol === symbol);
+          if (known && known.basePrice > 0) {
+            prev = known.basePrice;
+            this.lastPrices.set(symbol, prev);
+          } else {
+            continue;
+          }
+        }
+
+        const delta = (Math.random() - 0.49) * (prev * 0.0003);
+        const newPrice = Math.round((prev + delta) * 100) / 100;
+        const vol = Math.floor(Math.random() * 20) + 1;
+        this.processTick(symbol, newPrice, vol);
+      }
+    }, 800);
   }
 
   public destroy(): void {
