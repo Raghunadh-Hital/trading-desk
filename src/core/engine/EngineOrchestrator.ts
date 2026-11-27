@@ -2034,7 +2034,7 @@ export class EngineOrchestrator implements IndicatorController, PaneController, 
     private readonly inputDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     /** IndicatorController: re-run an indicator with merged input overrides (Pine session OR native instance). */
-    applyInputs(id: string, values: Record<string, InputValue>): void {
+    applyInputs(id: string, values: Record<string, InputValue>, debounceMs = 0): void {
         const record = this.registry.get(id);
         if (!record || (!record.session && !record.native)) return;
         record.inputValues = { ...record.inputValues, ...values };
@@ -2047,17 +2047,21 @@ export class EngineOrchestrator implements IndicatorController, PaneController, 
         record.pendingCause = 'inputs';
 
         if (record.session) {
-            // Debounce rapid input updates (e.g. typing, dragging steppers) so complex Pine scripts
-            // do not re-run repeatedly in a tight loop.
-            const existing = this.inputDebounceTimers.get(id);
-            if (existing) clearTimeout(existing);
-            this.inputDebounceTimers.set(
-                id,
-                setTimeout(() => {
-                    this.inputDebounceTimers.delete(id);
-                    record.session?.update(record.inputValues);
-                }, 120),
-            );
+            if (debounceMs > 0) {
+                // Debounce rapid input updates (e.g. typing, dragging steppers) so complex Pine scripts
+                // do not re-run repeatedly in a tight loop.
+                const existing = this.inputDebounceTimers.get(id);
+                if (existing) clearTimeout(existing);
+                this.inputDebounceTimers.set(
+                    id,
+                    setTimeout(() => {
+                        this.inputDebounceTimers.delete(id);
+                        record.session?.update(record.inputValues);
+                    }, debounceMs),
+                );
+            } else {
+                record.session.update(record.inputValues);
+            }
         } else if (record.native && !record.hidden) {
             record.native.instance.setInputs(record.inputValues);
         }

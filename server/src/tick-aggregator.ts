@@ -71,8 +71,8 @@ export class TickAggregator {
 
   public processTick(symbol: string, ltp: number, deltaVolume = 1, timestampMs = Date.now()): void {
     this.lastPrices.set(symbol, ltp);
-    // Resolutions to aggregate
-    const standardResolutions = ['1', '3', '5', '15', '60', 'D', 'W', 'M'];
+    // Resolutions to aggregate (matches all supported Vela and FYERS intraday & daily resolutions)
+    const standardResolutions = ['1', '2', '3', '5', '10', '15', '30', '60', '120', '240', 'D', 'W', 'M'];
 
     for (const res of standardResolutions) {
       const intervalMs = resolutionToSeconds(res) * 1000;
@@ -163,21 +163,31 @@ export class TickAggregator {
           if (!tickData) return;
           const tickList = Array.isArray(tickData) ? tickData : [tickData];
           for (const t of tickList) {
-            if (t && t.symbol && typeof t.ltp === 'number') {
-              this.lastFyersTickBySymbol.set(t.symbol, Date.now());
-              const prevVol = this.lastVolTradedToday.get(t.symbol);
-              let deltaVol = 1;
-              if (typeof t.vol_traded_today === 'number' && t.vol_traded_today > 0) {
-                if (prevVol !== undefined && t.vol_traded_today >= prevVol) {
-                  deltaVol = t.vol_traded_today - prevVol;
-                } else {
-                  deltaVol = t.last_traded_qty || 1;
+            if (t && t.symbol) {
+              const price =
+                typeof t.ltp === 'number' && t.ltp > 0
+                  ? t.ltp
+                  : typeof t.bid_price === 'number' && t.bid_price > 0
+                    ? t.bid_price
+                    : typeof t.bp === 'number' && t.bp > 0
+                      ? t.bp
+                      : null;
+              if (price !== null) {
+                this.lastFyersTickBySymbol.set(t.symbol, Date.now());
+                const prevVol = this.lastVolTradedToday.get(t.symbol);
+                let deltaVol = 1;
+                if (typeof t.vol_traded_today === 'number' && t.vol_traded_today > 0) {
+                  if (prevVol !== undefined && t.vol_traded_today >= prevVol) {
+                    deltaVol = t.vol_traded_today - prevVol;
+                  } else {
+                    deltaVol = t.last_traded_qty || 1;
+                  }
+                  this.lastVolTradedToday.set(t.symbol, t.vol_traded_today);
+                } else if (typeof t.last_traded_qty === 'number') {
+                  deltaVol = t.last_traded_qty;
                 }
-                this.lastVolTradedToday.set(t.symbol, t.vol_traded_today);
-              } else if (typeof t.last_traded_qty === 'number') {
-                deltaVol = t.last_traded_qty;
+                this.processTick(t.symbol, price, deltaVol, Date.now());
               }
-              this.processTick(t.symbol, t.ltp, deltaVol, Date.now());
             }
           }
         });

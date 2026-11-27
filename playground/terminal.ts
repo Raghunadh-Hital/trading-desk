@@ -577,7 +577,8 @@ function wireCellEvents(cellChart: any): void {
         }
     });
 
-    // Synchronize indicator input/styling edits across ALL layout cells
+    // Synchronize indicator input/styling edits across ALL layout cells (debounced by 1s)
+    let syncInputsTimeout: ReturnType<typeof setTimeout> | null = null;
     cellChart.on('indicator:inputs', ({ id }: { id: string }) => {
         const handle = cellChart.indicators().find((h: any) => h.id === id);
         if (handle) {
@@ -588,19 +589,22 @@ function wireCellEvents(cellChart: any): void {
             if (id === ALL_IN_ONE_ID) saved.inputs = currentInputs;
             localStorage.setItem(INDICATOR_STATE_KEY, JSON.stringify(saved));
 
-            // Replicate this updated styling/inputs to all other cells immediately!
-            for (const cell of ws.cells()) {
-                if (cell.chart !== cellChart) {
-                    const h = cell.chart.indicators().find((item: any) => item.id === id);
-                    if (h) {
-                        try {
-                            h.setInputs(currentInputs);
-                        } catch {
-                            // ignore
+            // Replicate this updated styling/inputs to all other cells after 1 second debounce
+            if (syncInputsTimeout) clearTimeout(syncInputsTimeout);
+            syncInputsTimeout = setTimeout(() => {
+                for (const cell of ws.cells()) {
+                    if (cell.chart !== cellChart) {
+                        const h = cell.chart.indicators().find((item: any) => item.id === id);
+                        if (h) {
+                            try {
+                                h.setInputs(currentInputs);
+                            } catch {
+                                // ignore
+                            }
                         }
                     }
                 }
-            }
+            }, 1000);
         }
     });
 

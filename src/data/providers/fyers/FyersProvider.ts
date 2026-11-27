@@ -141,6 +141,7 @@ export class FyersProvider implements DataProvider {
             ticker: formatFyersSymbol(ticker),
             timezone: 'Asia/Kolkata',
             session: '0915-1530',
+            mintick: 0.05,
             timeframes: {
                 finest: '1',
                 default: '15',

@@ -11,6 +11,7 @@ All notable changes to Vela, newest first.
 ### Fixed
 
 - **Indicator input fields preserve their declared script order and group layout.** Settings dialog sections now maintain the source sequence of ungrouped and grouped parameters instead of aggregating all ungrouped inputs at the top, and inputs stay on the Inputs tab in script order unless explicitly assigned to another tab.
+- **Live candlestick updates and price precision for Indian markets.** Forming candles now continuously update on real-time trade ticks and exchange quote changes across all intraday resolutions (including 30m, 2h, and 4h), and the price axis displays two decimal places matching the standard 0.05 tick size.
 
 ## [0.10.17]
 
