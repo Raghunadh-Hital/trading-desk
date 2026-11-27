@@ -144,7 +144,7 @@ If you wish to build or customize Trading Desk from source code:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/trading-desk.git
+git clone https://github.com/Raghunadh-Hital/trading-desk.git
 cd trading-desk
 
 # 2. Install dependencies
