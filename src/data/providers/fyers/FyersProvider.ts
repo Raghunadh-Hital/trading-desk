@@ -48,22 +48,63 @@ const DEFAULT_INDIAN_SYMBOLS: SymbolDescriptor[] = [
     { ticker: 'RVNL-A', prefix: 'BSE', description: 'Rail Vikas Nigam Ltd (BSE)', type: 'stock' },
 ];
 
+const knownSymbolMap = new Map<string, string>();
+
+export function registerKnownFyersSymbols(symbols: Array<{ symbol?: string; ticker?: string; prefix?: string }>): void {
+    for (const s of symbols) {
+        const raw = s.symbol || (s.prefix && s.ticker ? `${s.prefix}:${s.ticker}` : s.ticker);
+        if (!raw) continue;
+        const full = raw.trim().toUpperCase();
+        knownSymbolMap.set(full, full);
+
+        const parts = full.split(':');
+        const venue = parts.length > 1 ? parts[0]! : 'NSE';
+        const ticker = parts.length > 1 ? parts[1]! : full;
+        knownSymbolMap.set(ticker, full);
+
+        const base = ticker.split('-')[0] || ticker;
+        if (!knownSymbolMap.has(base)) {
+            knownSymbolMap.set(base, full);
+        }
+        if (!knownSymbolMap.has(`${venue}:${base}`)) {
+            knownSymbolMap.set(`${venue}:${base}`, full);
+        }
+    }
+}
+
+// Seed defaults
+registerKnownFyersSymbols(DEFAULT_INDIAN_SYMBOLS);
+
 export function normalizeTf(tf: string): string {
     return TF_NORMALIZE[tf] ?? TF_NORMALIZE[tf.toLowerCase()] ?? tf;
 }
 
 export function formatFyersSymbol(rawTicker: string): string {
     const t = rawTicker.trim().toUpperCase();
+    if (knownSymbolMap.has(t)) {
+        return knownSymbolMap.get(t)!;
+    }
     if (t.startsWith('NSE:') || t.startsWith('BSE:') || t.startsWith('MCX:')) {
-        return t;
+        if (t.includes('-')) return t;
+        const mapped = knownSymbolMap.get(t);
+        if (mapped) return mapped;
+        return `${t}-EQ`;
     }
     if (t.includes('SENSEX') || t.includes('BANKEX')) {
+        return `BSE:${t.includes('-') ? t : `${t}-INDEX`}`;
+    }
+    if (t.includes('NIFTY')) {
+        return `NSE:${t.includes('-') ? t : `${t}-INDEX`}`;
+    }
+    if (/-(A|B|T|Z|XT|X|MT|M|MS|P|E)$/.test(t) && !t.endsWith('-EQ')) {
         return `BSE:${t}`;
     }
-    if (/-(A|B|T|Z|XT|X|MT|M|P)$/.test(t) && !t.endsWith('-EQ')) {
-        return `BSE:${t}`;
+    if (/-(EQ|BE|SM|ST|BZ|SZ|E1|IV)$/.test(t)) {
+        return `NSE:${t}`;
     }
-    return `NSE:${t}`;
+    const mapped = knownSymbolMap.get(t) || knownSymbolMap.get(`NSE:${t}`);
+    if (mapped) return mapped;
+    return `NSE:${t}-EQ`;
 }
 
 export function dedupeSorted(bars: OHLCV[]): OHLCV[] {
@@ -127,6 +168,7 @@ export class FyersProvider implements DataProvider {
             if (res.ok) {
                 const data = await res.json();
                 if (Array.isArray(data.symbols)) {
+                    registerKnownFyersSymbols(data.symbols);
                     return data.symbols.map((s: { symbol: string; name: string }) => {
                         const parts = s.symbol.split(':');
                         const prefix = (parts.length > 1 ? parts[0] : 'NSE') ?? 'NSE';

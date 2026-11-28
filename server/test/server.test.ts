@@ -7,6 +7,7 @@ import {
 import { TickAggregator } from '../src/tick-aggregator.js';
 import { historyCache } from '../src/cache.js';
 import { createServerApp } from '../src/index.js';
+import { symbolService } from '../src/symbol-service.js';
 
 describe('Vela FYERS Server Proxy', () => {
   beforeEach(() => {
@@ -174,6 +175,17 @@ describe('Vela FYERS Server Proxy', () => {
         }
       );
       expect(logoutResult).toEqual({ success: true, message: 'Logged out successfully' });
+    });
+
+    it('searches symbols and finds SME stocks like FELIX and popular equities', () => {
+      const results = symbolService.search('felix');
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0]?.symbol).toBe('NSE:FELIX-SM');
+      expect(results[0]?.name).toContain('FELIX');
+
+      const reliance = symbolService.search('reliance');
+      expect(reliance.length).toBeGreaterThan(0);
+      expect(reliance[0]?.symbol).toBe('NSE:RELIANCE-EQ');
     });
   });
 });

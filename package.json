@@ -132,7 +132,8 @@
       "dist-desktop/**/*",
       "electron/**/*",
       "server/dist/**/*",
-      "server/package.json"
+      "server/package.json",
+      "server/.symbols-cache.json"
     ],
     "extraResources": [
       {
@@ -144,7 +145,8 @@
         "to": "server",
         "filter": [
           "dist/**/*",
-          "package.json"
+          "package.json",
+          ".symbols-cache.json"
         ]
       }
     ],

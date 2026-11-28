@@ -224,7 +224,7 @@ function parseSymbolVenue(rawSymbol: string): { exchange: string; ticker: string
     if (s.includes('SENSEX') || s.includes('BANKEX')) {
         return { exchange: 'BSE', ticker: s };
     }
-    if (/-(A|B|T|Z|XT|X|MT|M|P)$/.test(s) && !s.endsWith('-EQ')) {
+    if (/-(A|B|T|Z|XT|X|MT|M|MS|P|E)$/.test(s) && !s.endsWith('-EQ')) {
         return { exchange: 'BSE', ticker: s };
     }
     return { exchange: 'NSE', ticker: s };

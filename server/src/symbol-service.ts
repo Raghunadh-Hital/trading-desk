@@ -43,15 +43,21 @@ const DEFAULT_POPULAR_EQUITIES: SymbolItem[] = [
   { symbol: 'NSE:AXISBANK-EQ', name: 'Axis Bank Ltd', basePrice: 1150 },
 ];
 
+const VALID_NSE_SERIES = new Set(['EQ', 'BE', 'SM', 'ST', 'BZ', 'SZ', 'E1', 'IV', 'INDEX']);
+const VALID_BSE_SERIES = new Set(['A', 'B', 'T', 'X', 'XT', 'M', 'MT', 'MS', 'P', 'Z', 'ZP', 'E', 'INDEX']);
+
 class SymbolService {
   private symbols: SymbolItem[] = [...PRIMARY_INDICES, ...DEFAULT_POPULAR_EQUITIES];
   private cacheFilePath: string;
+  private bundledCacheFilePath: string;
   private isUpdating = false;
 
   constructor() {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
-    this.cacheFilePath = path.resolve(__dirname, '..', '.symbols-cache.json');
+    const dataDir = process.env.VELA_DATA_DIR || path.resolve(__dirname, '..');
+    this.cacheFilePath = path.resolve(dataDir, '.symbols-cache.json');
+    this.bundledCacheFilePath = path.resolve(__dirname, '..', '.symbols-cache.json');
     this.init();
   }
 
@@ -65,8 +71,14 @@ class SymbolService {
 
   private loadFromDiskCache(): void {
     try {
-      if (fs.existsSync(this.cacheFilePath)) {
-        const raw = fs.readFileSync(this.cacheFilePath, 'utf-8');
+      const targetPath = fs.existsSync(this.cacheFilePath)
+        ? this.cacheFilePath
+        : fs.existsSync(this.bundledCacheFilePath)
+          ? this.bundledCacheFilePath
+          : null;
+
+      if (targetPath) {
+        const raw = fs.readFileSync(targetPath, 'utf-8');
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
           this.symbols = parsed;
@@ -79,6 +91,10 @@ class SymbolService {
 
   private saveToDiskCache(): void {
     try {
+      const dir = path.dirname(this.cacheFilePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
       fs.writeFileSync(this.cacheFilePath, JSON.stringify(this.symbols), 'utf-8');
     } catch {
       // Ignore cache write errors
@@ -110,12 +126,16 @@ class SymbolService {
           const cols = line.split(',');
           const fyersSym = cols[9];
           const name = cols[1];
-          if (fyersSym && fyersSym.endsWith('-EQ') && name) {
-            equityMap.set(fyersSym, {
-              symbol: fyersSym,
-              name: name.replace(/\s+/g, ' ').trim(),
-              basePrice: 100,
-            });
+          if (fyersSym && fyersSym.startsWith('NSE:') && name) {
+            const lastDash = fyersSym.lastIndexOf('-');
+            const sfx = lastDash > -1 ? fyersSym.slice(lastDash + 1) : '';
+            if (VALID_NSE_SERIES.has(sfx)) {
+              equityMap.set(fyersSym, {
+                symbol: fyersSym,
+                name: name.replace(/\s+/g, ' ').trim(),
+                basePrice: 100,
+              });
+            }
           }
         }
       }
@@ -129,17 +149,16 @@ class SymbolService {
           const cols = line.split(',');
           const fyersSym = cols[9];
           const name = cols[1];
-          if (
-            fyersSym &&
-            fyersSym.startsWith('BSE:') &&
-            (fyersSym.endsWith('-A') || fyersSym.endsWith('-B') || fyersSym.endsWith('-T')) &&
-            name
-          ) {
-            equityMap.set(fyersSym, {
-              symbol: fyersSym,
-              name: name.replace(/\s+/g, ' ').trim(),
-              basePrice: 100,
-            });
+          if (fyersSym && fyersSym.startsWith('BSE:') && name) {
+            const lastDash = fyersSym.lastIndexOf('-');
+            const sfx = lastDash > -1 ? fyersSym.slice(lastDash + 1) : '';
+            if (VALID_BSE_SERIES.has(sfx)) {
+              equityMap.set(fyersSym, {
+                symbol: fyersSym,
+                name: name.replace(/\s+/g, ' ').trim(),
+                basePrice: 100,
+              });
+            }
           }
         }
       }
@@ -168,17 +187,29 @@ class SymbolService {
     const q = query.trim().toUpperCase();
     if (!q) return this.symbols.slice(0, limit);
 
-    const matches: SymbolItem[] = [];
+    const exact: SymbolItem[] = [];
+    const prefix: SymbolItem[] = [];
+    const substr: SymbolItem[] = [];
+    const nameMatches: SymbolItem[] = [];
+
     for (const item of this.symbols) {
-      if (
-        item.symbol.toUpperCase().includes(q) ||
-        item.name.toUpperCase().includes(q)
-      ) {
-        matches.push(item);
-        if (matches.length >= limit) break;
+      const symUpper = item.symbol.toUpperCase();
+      const rawTicker = symUpper.split(':')[1] || symUpper;
+      const baseTicker = rawTicker.split('-')[0] || rawTicker;
+      const nameUpper = item.name.toUpperCase();
+
+      if (rawTicker === q || baseTicker === q || symUpper === q) {
+        exact.push(item);
+      } else if (rawTicker.startsWith(q) || baseTicker.startsWith(q)) {
+        prefix.push(item);
+      } else if (rawTicker.includes(q)) {
+        substr.push(item);
+      } else if (nameUpper.startsWith(q) || nameUpper.includes(q)) {
+        nameMatches.push(item);
       }
     }
-    return matches;
+
+    return [...exact, ...prefix, ...substr, ...nameMatches].slice(0, limit);
   }
 }
 
