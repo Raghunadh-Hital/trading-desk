@@ -6,6 +6,7 @@ import {
   clearStoredToken,
   getStoredCredentials,
   saveStoredCredentials,
+  clearStoredCredentials,
 } from './token-store.js';
 import { historyCache } from './cache.js';
 import {
@@ -138,7 +139,10 @@ export class FyersClientService {
   public logout(): void {
     this.currentToken = null;
     this.lastValidatedAt = 0;
+    config.fyersAppId = '';
+    config.fyersSecretKey = '';
     clearStoredToken();
+    clearStoredCredentials();
   }
 
   public getLoginUrl(state = 'vela_state'): string {

@@ -140,6 +140,12 @@
                 border-color: var(--td-blue-light);
                 color: var(--td-primary);
             }
+            #header-logout-btn {
+                display: none;
+            }
+            #header-logout-btn.visible {
+                display: inline-flex !important;
+            }
             .header-logout-btn {
                 background: #EF4444 !important;
                 color: #FFFFFF !important;
@@ -165,6 +171,37 @@
             }
             .header-logout-btn:active {
                 transform: translateY(0);
+            }
+
+            .chart-calculating-indicator {
+                display: none;
+                align-items: center;
+                gap: 7px;
+                background: #F0F4FE;
+                border: 1px solid var(--td-blue-light);
+                color: var(--td-primary);
+                border-radius: 20px;
+                padding: 4px 12px;
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: -0.01em;
+                user-select: none;
+                pointer-events: none;
+                box-shadow: 0 2px 6px rgba(52, 75, 205, 0.08);
+            }
+            .chart-calculating-indicator.visible {
+                display: inline-flex;
+            }
+            .calc-spinner {
+                width: 11px;
+                height: 11px;
+                border: 2px solid rgba(52, 75, 205, 0.25);
+                border-top-color: var(--td-primary);
+                border-radius: 50%;
+                animation: calc-spin 0.6s linear infinite;
+            }
+            @keyframes calc-spin {
+                to { transform: rotate(360deg); }
             }
             .auth-status {
                 display: flex;
@@ -915,6 +952,10 @@
                 </div>
             </div>
             <div class="header-right">
+                <div id="chart-calculating-indicator" class="chart-calculating-indicator" title="Indicators or calculations updating smoothly">
+                    <div class="calc-spinner"></div>
+                    <span id="chart-calc-text">Calculating...</span>
+                </div>
                 <div id="fyers-auth-btn" class="auth-status" title="Click to check FYERS login or configure credentials">
                     <div id="status-indicator" class="status-dot"></div>
                     <span id="status-label">FYERS: Connecting…</span>

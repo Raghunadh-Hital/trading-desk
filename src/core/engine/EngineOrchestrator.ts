@@ -253,7 +253,9 @@ export class EngineOrchestrator implements IndicatorController, PaneController, 
         this.renderer.mount(container, config.theme);
         // The renderer's in-chart settings dialog reports edits here → re-run that indicator.
         this.renderer.onInputChange((e) =>
-            e.kind === 'prop' ? this.applyProps(e.indicatorId, { [e.key]: e.value }) : this.applyInputs(e.indicatorId, { [e.key]: e.value }),
+            e.kind === 'prop'
+                ? this.applyProps(e.indicatorId, { [e.key]: e.value }, 250)
+                : this.applyInputs(e.indicatorId, { [e.key]: e.value }, 250),
         );
         // The renderer's in-chart legend ✕ reports a removal here → tear the indicator down.
         this.renderer.onRemoveIndicator((id) => this.removeIndicator(id));
@@ -2060,7 +2062,9 @@ export class EngineOrchestrator implements IndicatorController, PaneController, 
                     }, debounceMs),
                 );
             } else {
-                record.session.update(record.inputValues);
+                setTimeout(() => {
+                    record.session?.update(record.inputValues);
+                }, 0);
             }
         } else if (record.native && !record.hidden) {
             record.native.instance.setInputs(record.inputValues);
@@ -2081,7 +2085,7 @@ export class EngineOrchestrator implements IndicatorController, PaneController, 
     /** IndicatorController: re-run an indicator with merged declaration-prop overrides.
      *  Same lifecycle as {@link applyInputs} — a prop change replays the whole script.
      *  Script indicators only: natives have no declaration props. */
-    applyProps(id: string, values: Record<string, InputValue>): void {
+    applyProps(id: string, values: Record<string, InputValue>, debounceMs = 0): void {
         const record = this.registry.get(id);
         if (!record?.session) return;
         record.propValues = { ...record.propValues, ...values };
@@ -2090,7 +2094,21 @@ export class EngineOrchestrator implements IndicatorController, PaneController, 
         record.pendingStructural = true;
         if (!record.hidden) this.setLoading(record, true);
         record.pendingCause = 'inputs';
-        record.session.update(record.inputValues, record.propValues);
+        if (debounceMs > 0) {
+            const existing = this.inputDebounceTimers.get(id);
+            if (existing) clearTimeout(existing);
+            this.inputDebounceTimers.set(
+                id,
+                setTimeout(() => {
+                    this.inputDebounceTimers.delete(id);
+                    record.session?.update(record.inputValues, record.propValues);
+                }, debounceMs),
+            );
+        } else {
+            setTimeout(() => {
+                record.session?.update(record.inputValues, record.propValues);
+            }, 0);
+        }
         this.events.emit('indicator:inputs', { id });
     }
 

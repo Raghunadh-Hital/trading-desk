@@ -93,3 +93,14 @@ export function clearStoredToken(): void {
   }
 }
 
+export function clearStoredCredentials(): void {
+  inMemoryCredentials = null;
+  try {
+    if (fs.existsSync(CREDENTIALS_FILE)) {
+      fs.unlinkSync(CREDENTIALS_FILE);
+    }
+  } catch {
+    // Ignore
+  }
+}
+

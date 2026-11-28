@@ -556,6 +556,28 @@ async function syncAllIndicatorsAcrossLayout(): Promise<void> {
     }
 }
 
+// Smooth TradingView-style Non-blocking Calculating Indicator
+const calculatingIndicator = document.getElementById('chart-calculating-indicator');
+let calcHideTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function showCalculatingIndicator(label = 'Calculating...') {
+    if (calcHideTimeout) clearTimeout(calcHideTimeout);
+    if (calculatingIndicator) {
+        const textEl = document.getElementById('chart-calc-text');
+        if (textEl) textEl.textContent = label;
+        calculatingIndicator.classList.add('visible');
+    }
+}
+
+function hideCalculatingIndicator(delayMs = 350) {
+    if (calcHideTimeout) clearTimeout(calcHideTimeout);
+    calcHideTimeout = setTimeout(() => {
+        if (calculatingIndicator) {
+            calculatingIndicator.classList.remove('visible');
+        }
+    }, delayMs);
+}
+
 // 4. Wire cell events, live prices, and input persistence
 function wireCellEvents(cellChart: any): void {
     cellChart.on('bar', (bar: any) => {
@@ -571,25 +593,39 @@ function wireCellEvents(cellChart: any): void {
         }
     });
 
+    cellChart.on('load:start', () => {
+        showCalculatingIndicator('Loading Market Data...');
+    });
+
     cellChart.on('load:end', (e: any) => {
+        hideCalculatingIndicator(150);
         if (cellChart === ws.chart) {
             updateTabTitle(null, e.symbol);
         }
     });
 
-    // Synchronize indicator input/styling edits across ALL layout cells (debounced by 1s)
+    cellChart.on('indicator:model', () => {
+        hideCalculatingIndicator(150);
+    });
+
+    // Synchronize indicator input/styling edits across ALL layout cells (debounced smoothly)
     let syncInputsTimeout: ReturnType<typeof setTimeout> | null = null;
+    let saveStorageTimeout: ReturnType<typeof setTimeout> | null = null;
     cellChart.on('indicator:inputs', ({ id }: { id: string }) => {
+        showCalculatingIndicator('Updating Indicator...');
         const handle = cellChart.indicators().find((h: any) => h.id === id);
         if (handle) {
             const currentInputs = handle.inputValues();
-            const saved = getSavedIndicatorState() || { applied: true, allInputs: {} };
-            saved.allInputs ??= {};
-            saved.allInputs[id] = currentInputs;
-            if (id === ALL_IN_ONE_ID) saved.inputs = currentInputs;
-            localStorage.setItem(INDICATOR_STATE_KEY, JSON.stringify(saved));
+            if (saveStorageTimeout) clearTimeout(saveStorageTimeout);
+            saveStorageTimeout = setTimeout(() => {
+                const saved = getSavedIndicatorState() || { applied: true, allInputs: {} };
+                saved.allInputs ??= {};
+                saved.allInputs[id] = currentInputs;
+                if (id === ALL_IN_ONE_ID) saved.inputs = currentInputs;
+                localStorage.setItem(INDICATOR_STATE_KEY, JSON.stringify(saved));
+            }, 300);
 
-            // Replicate this updated styling/inputs to all other cells after 1 second debounce
+            // Replicate this updated styling/inputs to all other cells after debounce
             if (syncInputsTimeout) clearTimeout(syncInputsTimeout);
             syncInputsTimeout = setTimeout(() => {
                 for (const cell of ws.cells()) {
@@ -604,7 +640,10 @@ function wireCellEvents(cellChart: any): void {
                         }
                     }
                 }
-            }, 1000);
+                hideCalculatingIndicator(250);
+            }, 800);
+        } else {
+            hideCalculatingIndicator(400);
         }
     });
 
@@ -717,6 +756,50 @@ const oauthLoginLink = document.getElementById('oauth-login-link');
 const screenTokenInput = document.getElementById('screen-token-input') as HTMLInputElement | null;
 const screenTokenBtn = document.getElementById('screen-token-btn');
 
+// Session state: Step 4 is only considered saved if user enters credentials and saves them in this session
+let isStep4SavedInSession = false;
+
+// Header Logout Button & Confirmation Dialog Controls
+const headerLogoutBtn = document.getElementById('header-logout-btn');
+const logoutConfirmModal = document.getElementById('logout-confirm-modal');
+const cancelLogoutBtn = document.getElementById('cancel-logout-btn');
+const confirmLogoutBtn = document.getElementById('confirm-logout-btn');
+
+headerLogoutBtn?.addEventListener('click', () => {
+    logoutConfirmModal?.classList.add('open');
+});
+
+cancelLogoutBtn?.addEventListener('click', () => {
+    logoutConfirmModal?.classList.remove('open');
+});
+
+logoutConfirmModal?.addEventListener('click', (e) => {
+    if (e.target === logoutConfirmModal) {
+        logoutConfirmModal.classList.remove('open');
+    }
+});
+
+const onStep4InputChange = () => {
+    isStep4SavedInSession = false;
+    step2Card?.classList.remove('completed');
+    timelineStep4?.classList.remove('completed');
+    if (step2Tag) step2Tag.textContent = 'Action Required';
+
+    step3Card?.classList.add('locked');
+    step3Card?.classList.remove('active');
+    timelineStep5?.classList.remove('active');
+    timelineStep5?.classList.remove('completed');
+    if (step3Tag) step3Tag.textContent = 'Awaiting Step 4';
+    if (screenLoginBtn) {
+        screenLoginBtn.setAttribute('disabled', 'true');
+        screenLoginBtn.classList.add('disabled');
+        screenLoginBtn.style.opacity = '0.45';
+        screenLoginBtn.style.pointerEvents = 'none';
+    }
+};
+screenAppIdInput?.addEventListener('input', onStep4InputChange);
+screenSecretKeyInput?.addEventListener('input', onStep4InputChange);
+
 function openExternalUrl(url: string) {
     const desktopApi = (window as unknown as { velaDesktop?: { openExternal?: (url: string) => void } }).velaDesktop;
     if (desktopApi?.openExternal) {
@@ -806,8 +889,16 @@ function setLoginScreenVisible(visible: boolean) {
     if (loginScreen) {
         if (visible) {
             loginScreen.classList.add('visible');
+            if (headerLogoutBtn) {
+                headerLogoutBtn.classList.remove('visible');
+                headerLogoutBtn.style.display = 'none';
+            }
         } else {
             loginScreen.classList.remove('visible');
+            if (headerLogoutBtn && wasAuthenticated) {
+                headerLogoutBtn.classList.add('visible');
+                headerLogoutBtn.style.display = 'inline-flex';
+            }
         }
     }
 }
@@ -866,6 +957,10 @@ async function checkFyersStatus() {
                 statusLabel.textContent = 'FYERS: Authenticated';
                 if (screenWaitingNotice) screenWaitingNotice.style.display = 'none';
                 setLoginScreenVisible(false);
+                if (headerLogoutBtn) {
+                    headerLogoutBtn.classList.add('visible');
+                    headerLogoutBtn.style.display = 'inline-flex';
+                }
 
                 // If user just authenticated (transitioned from unauthenticated -> authenticated),
                 // immediately reload all charts & Pine Scripts with live data!
@@ -877,9 +972,15 @@ async function checkFyersStatus() {
             } else {
                 wasAuthenticated = false;
                 statusDot.className = 'status-dot';
-                if (!data.configured) {
+                if (headerLogoutBtn) {
+                    headerLogoutBtn.classList.remove('visible');
+                    headerLogoutBtn.style.display = 'none';
+                }
+
+                const hasInputs = Boolean(screenAppIdInput?.value.trim() && screenSecretKeyInput?.value.trim());
+                if (!isStep4SavedInSession || !hasInputs) {
                     statusLabel.textContent = 'FYERS: Credentials Not Configured';
-                    if (screenStatusText) screenStatusText.textContent = 'Step 1 & 2: Configure FYERS API Credentials';
+                    if (screenStatusText) screenStatusText.textContent = 'Step 4: Configure FYERS API Credentials';
                     screenStatusBadge?.classList.remove('configured');
                     
                     // Step 4 needs action
@@ -887,7 +988,7 @@ async function checkFyersStatus() {
                     timelineStep4?.classList.remove('completed');
                     if (step2Tag) step2Tag.textContent = 'Action Required';
 
-                    // Step 5 locked
+                    // Step 5 locked & strictly disabled
                     step3Card?.classList.add('locked');
                     step3Card?.classList.remove('active');
                     timelineStep5?.classList.remove('active');
@@ -896,6 +997,8 @@ async function checkFyersStatus() {
                     if (screenLoginBtn) {
                         screenLoginBtn.setAttribute('disabled', 'true');
                         screenLoginBtn.classList.add('disabled');
+                        screenLoginBtn.style.opacity = '0.45';
+                        screenLoginBtn.style.pointerEvents = 'none';
                     }
                 } else {
                     statusLabel.textContent = 'FYERS: Login Required (Session Expired)';
@@ -916,6 +1019,8 @@ async function checkFyersStatus() {
                     if (screenLoginBtn) {
                         screenLoginBtn.removeAttribute('disabled');
                         screenLoginBtn.classList.remove('disabled');
+                        screenLoginBtn.style.opacity = '1';
+                        screenLoginBtn.style.pointerEvents = 'auto';
                     }
                 }
                 setLoginScreenVisible(true);
@@ -923,6 +1028,10 @@ async function checkFyersStatus() {
         } else {
             consecutiveOfflineCount++;
             if (consecutiveOfflineCount >= 3) {
+                if (headerLogoutBtn) {
+                    headerLogoutBtn.classList.remove('visible');
+                    headerLogoutBtn.style.display = 'none';
+                }
                 statusDot.className = 'status-dot';
                 statusLabel.textContent = 'FYERS: Service Unavailable';
                 setLoginScreenVisible(true);
@@ -931,6 +1040,10 @@ async function checkFyersStatus() {
     } catch {
         consecutiveOfflineCount++;
         if (consecutiveOfflineCount >= 3) {
+            if (headerLogoutBtn) {
+                headerLogoutBtn.classList.remove('visible');
+                headerLogoutBtn.style.display = 'none';
+            }
             statusDot.className = 'status-dot';
             statusLabel.textContent = 'FYERS: Local Proxy Offline';
             setLoginScreenVisible(true);
@@ -961,6 +1074,7 @@ async function saveApiCredentials(appId: string, secretKey: string, feedbackEl?:
             body: JSON.stringify({ appId: aid, secretKey: sec }),
         });
         if (res.ok) {
+            isStep4SavedInSession = true;
             if (feedbackEl) {
                 feedbackEl.className = 'step-feedback success';
                 feedbackEl.textContent = '✓ Credentials saved successfully! Step 5 is now unlocked.';
@@ -979,6 +1093,8 @@ async function saveApiCredentials(appId: string, secretKey: string, feedbackEl?:
             if (screenLoginBtn) {
                 screenLoginBtn.removeAttribute('disabled');
                 screenLoginBtn.classList.remove('disabled');
+                screenLoginBtn.style.opacity = '1';
+                screenLoginBtn.style.pointerEvents = 'auto';
             }
             await checkFyersStatus();
         } else {
@@ -1015,27 +1131,8 @@ const modalSecretKeyInput = document.getElementById('modal-secret-key') as HTMLI
 const modalSaveCredsBtn = document.getElementById('modal-save-creds-btn');
 const modalLogoutBtn = document.getElementById('modal-logout-btn');
 
-// Header Logout Button & Confirmation Dialog Controls
-const headerLogoutBtn = document.getElementById('header-logout-btn');
-const logoutConfirmModal = document.getElementById('logout-confirm-modal');
-const cancelLogoutBtn = document.getElementById('cancel-logout-btn');
-const confirmLogoutBtn = document.getElementById('confirm-logout-btn');
-
-headerLogoutBtn?.addEventListener('click', () => {
-    logoutConfirmModal?.classList.add('open');
-});
-
-cancelLogoutBtn?.addEventListener('click', () => {
-    logoutConfirmModal?.classList.remove('open');
-});
-
-logoutConfirmModal?.addEventListener('click', (e) => {
-    if (e.target === logoutConfirmModal) {
-        logoutConfirmModal.classList.remove('open');
-    }
-});
-
 async function performLogout() {
+    isStep4SavedInSession = false;
     try {
         logoutConfirmModal?.classList.remove('open');
         authModal?.classList.remove('open');
@@ -1047,6 +1144,35 @@ async function performLogout() {
     wasAuthenticated = false;
     statusDot.className = 'status-dot';
     statusLabel.textContent = 'FYERS: Logged Out';
+
+    if (headerLogoutBtn) {
+        headerLogoutBtn.classList.remove('visible');
+        headerLogoutBtn.style.display = 'none';
+    }
+
+    if (screenAppIdInput) screenAppIdInput.value = '';
+    if (screenSecretKeyInput) screenSecretKeyInput.value = '';
+    if (step2Feedback) {
+        step2Feedback.style.display = 'none';
+        step2Feedback.textContent = '';
+    }
+
+    step2Card?.classList.remove('completed');
+    timelineStep4?.classList.remove('completed');
+    if (step2Tag) step2Tag.textContent = 'Action Required';
+
+    step3Card?.classList.add('locked');
+    step3Card?.classList.remove('active');
+    timelineStep5?.classList.remove('active');
+    timelineStep5?.classList.remove('completed');
+    if (step3Tag) step3Tag.textContent = 'Awaiting Step 4';
+    if (screenLoginBtn) {
+        screenLoginBtn.setAttribute('disabled', 'true');
+        screenLoginBtn.classList.add('disabled');
+        screenLoginBtn.style.opacity = '0.45';
+        screenLoginBtn.style.pointerEvents = 'none';
+    }
+
     setLoginScreenVisible(true);
     await checkFyersStatus();
 }
