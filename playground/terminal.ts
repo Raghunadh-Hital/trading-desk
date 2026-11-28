@@ -423,10 +423,14 @@ async function applyScript(
         const existing = c.indicators().find((h: any) => h.id === id);
         if (existing) {
             if (existing.source === sanitizedScript) {
-                // If the script code is already running, just update inputs / styling
+                // If the script code is already running, just update inputs / styling if changed
                 if (existingInputs && Object.keys(existingInputs).length > 0) {
                     try {
-                        existing.setInputs(existingInputs);
+                        const curStr = JSON.stringify(existing.inputValues() || {});
+                        const newStr = JSON.stringify(existingInputs);
+                        if (curStr !== newStr) {
+                            existing.setInputs(existingInputs);
+                        }
                     } catch {
                         // ignore
                     }
@@ -461,9 +465,12 @@ async function applyScript(
 }
 
 let isSyncingLayout = false;
+let isSyncingInputs = false;
+let globalSyncInputsTimeout: ReturnType<typeof setTimeout> | null = null;
+let globalSaveStorageTimeout: ReturnType<typeof setTimeout> | null = null;
 let syncLayoutDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-function triggerSyncAllIndicatorsAcrossLayout(delay = 80): void {
+function triggerSyncAllIndicatorsAcrossLayout(delay = 120): void {
     if (syncLayoutDebounceTimer) clearTimeout(syncLayoutDebounceTimer);
     syncLayoutDebounceTimer = setTimeout(() => {
         void syncAllIndicatorsAcrossLayout();
@@ -477,6 +484,7 @@ function triggerSyncAllIndicatorsAcrossLayout(delay = 80): void {
 async function syncAllIndicatorsAcrossLayout(): Promise<void> {
     if (isSyncingLayout) return;
     isSyncingLayout = true;
+    showCalculatingIndicator('Updating Indicator...');
     try {
         const cells = ws.cells();
         if (cells.length === 0) return;
@@ -544,7 +552,7 @@ async function syncAllIndicatorsAcrossLayout(): Promise<void> {
                     cell.setPriceStyle(activeStyle);
                 }
 
-                await cell.chart.ready();
+                await cell.chart.ready().catch(() => {});
 
                 for (const spec of specsToApply) {
                     await applyScript(spec.source, spec.id, cell.chart, spec.inputs);
@@ -553,24 +561,33 @@ async function syncAllIndicatorsAcrossLayout(): Promise<void> {
         );
     } finally {
         isSyncingLayout = false;
+        hideCalculatingIndicator(250);
+        focusCMP();
     }
 }
 
 // Smooth TradingView-style Non-blocking Calculating Indicator
 const calculatingIndicator = document.getElementById('chart-calculating-indicator');
 let calcHideTimeout: ReturnType<typeof setTimeout> | null = null;
+let calcAutoDismissTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function showCalculatingIndicator(label = 'Calculating...') {
     if (calcHideTimeout) clearTimeout(calcHideTimeout);
+    if (calcAutoDismissTimeout) clearTimeout(calcAutoDismissTimeout);
     if (calculatingIndicator) {
         const textEl = document.getElementById('chart-calc-text');
         if (textEl) textEl.textContent = label;
         calculatingIndicator.classList.add('visible');
     }
+    // Hard safety guard: Never allow the calculating indicator to remain indefinitely visible
+    calcAutoDismissTimeout = setTimeout(() => {
+        hideCalculatingIndicator(0);
+    }, 4000);
 }
 
-function hideCalculatingIndicator(delayMs = 350) {
+function hideCalculatingIndicator(delayMs = 250) {
     if (calcHideTimeout) clearTimeout(calcHideTimeout);
+    if (calcAutoDismissTimeout) clearTimeout(calcAutoDismissTimeout);
     calcHideTimeout = setTimeout(() => {
         if (calculatingIndicator) {
             calculatingIndicator.classList.remove('visible');
@@ -609,42 +626,61 @@ function wireCellEvents(cellChart: any): void {
     });
 
     // Synchronize indicator input/styling edits across ALL layout cells (debounced smoothly)
-    let syncInputsTimeout: ReturnType<typeof setTimeout> | null = null;
-    let saveStorageTimeout: ReturnType<typeof setTimeout> | null = null;
     cellChart.on('indicator:inputs', ({ id }: { id: string }) => {
-        showCalculatingIndicator('Updating Indicator...');
-        const handle = cellChart.indicators().find((h: any) => h.id === id);
-        if (handle) {
-            const currentInputs = handle.inputValues();
-            if (saveStorageTimeout) clearTimeout(saveStorageTimeout);
-            saveStorageTimeout = setTimeout(() => {
-                const saved = getSavedIndicatorState() || { applied: true, allInputs: {} };
-                saved.allInputs ??= {};
-                saved.allInputs[id] = currentInputs;
-                if (id === ALL_IN_ONE_ID) saved.inputs = currentInputs;
-                localStorage.setItem(INDICATOR_STATE_KEY, JSON.stringify(saved));
-            }, 300);
+        // Prevent recursive cascading broadcast loops when already syncing
+        if (isSyncingLayout || isSyncingInputs) {
+            return;
+        }
 
-            // Replicate this updated styling/inputs to all other cells after debounce
-            if (syncInputsTimeout) clearTimeout(syncInputsTimeout);
-            syncInputsTimeout = setTimeout(() => {
+        const handle = cellChart.indicators().find((h: any) => h.id === id);
+        if (!handle) {
+            hideCalculatingIndicator(150);
+            return;
+        }
+
+        const currentInputs = handle.inputValues();
+        if (!currentInputs) {
+            hideCalculatingIndicator(150);
+            return;
+        }
+
+        showCalculatingIndicator('Updating Indicator...');
+
+        if (globalSaveStorageTimeout) clearTimeout(globalSaveStorageTimeout);
+        globalSaveStorageTimeout = setTimeout(() => {
+            const saved = getSavedIndicatorState() || { applied: true, allInputs: {} };
+            saved.allInputs ??= {};
+            saved.allInputs[id] = currentInputs;
+            if (id === ALL_IN_ONE_ID) saved.inputs = currentInputs;
+            localStorage.setItem(INDICATOR_STATE_KEY, JSON.stringify(saved));
+        }, 300);
+
+        // Replicate this updated styling/inputs to all other cells after debounce
+        if (globalSyncInputsTimeout) clearTimeout(globalSyncInputsTimeout);
+        globalSyncInputsTimeout = setTimeout(() => {
+            isSyncingInputs = true;
+            try {
+                const currentStr = JSON.stringify(currentInputs);
                 for (const cell of ws.cells()) {
                     if (cell.chart !== cellChart) {
                         const h = cell.chart.indicators().find((item: any) => item.id === id);
                         if (h) {
                             try {
-                                h.setInputs(currentInputs);
+                                const otherStr = JSON.stringify(h.inputValues() || {});
+                                if (otherStr !== currentStr) {
+                                    h.setInputs(currentInputs);
+                                }
                             } catch {
                                 // ignore
                             }
                         }
                     }
                 }
+            } finally {
+                isSyncingInputs = false;
                 hideCalculatingIndicator(250);
-            }, 800);
-        } else {
-            hideCalculatingIndicator(400);
-        }
+            }
+        }, 600);
     });
 
     cellChart.on('indicator:removed', ({ id }: { id: string }) => {
@@ -677,13 +713,17 @@ ws.on('cell:created', ({ id }) => {
     const cell = ws.cell(id);
     if (cell) {
         wireCellEvents(cell.chart);
-        triggerSyncAllIndicatorsAcrossLayout(50);
+        triggerSyncAllIndicatorsAcrossLayout(100);
     }
 });
 
 // When layout changes, ensure every cell in the new grid carries the indicators and styling
 ws.on('layout:changed', () => {
-    triggerSyncAllIndicatorsAcrossLayout(80);
+    triggerSyncAllIndicatorsAcrossLayout(120);
+    setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+        focusCMP();
+    }, 200);
 });
 
 ws.on('cell:active', () => {
@@ -702,10 +742,19 @@ setInterval(() => {
 // 2. Setup CMP Auto Zoom in Header
 function focusCMP(): void {
     try {
-        ws.chart.renderer.set('autoScale', true);
-        ws.chart.panBy(0);
+        for (const cell of ws.cells()) {
+            try {
+                cell.chart.renderer.set('autoScale', true);
+                if (typeof cell.chart.fitContent === 'function') {
+                    cell.chart.fitContent();
+                }
+                cell.chart.panBy(0);
+            } catch {
+                // Ignore if cell renderer not ready
+            }
+        }
     } catch {
-        // Ignore if renderer not ready
+        // Ignore if workspace not ready
     }
 }
 
