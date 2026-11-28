@@ -1015,19 +1015,53 @@ const modalSecretKeyInput = document.getElementById('modal-secret-key') as HTMLI
 const modalSaveCredsBtn = document.getElementById('modal-save-creds-btn');
 const modalLogoutBtn = document.getElementById('modal-logout-btn');
 
-modalSaveCredsBtn?.addEventListener('click', () => {
-    if (modalAppIdInput && modalSecretKeyInput) {
-        void saveApiCredentials(modalAppIdInput.value, modalSecretKeyInput.value);
+// Header Logout Button & Confirmation Dialog Controls
+const headerLogoutBtn = document.getElementById('header-logout-btn');
+const logoutConfirmModal = document.getElementById('logout-confirm-modal');
+const cancelLogoutBtn = document.getElementById('cancel-logout-btn');
+const confirmLogoutBtn = document.getElementById('confirm-logout-btn');
+
+headerLogoutBtn?.addEventListener('click', () => {
+    logoutConfirmModal?.classList.add('open');
+});
+
+cancelLogoutBtn?.addEventListener('click', () => {
+    logoutConfirmModal?.classList.remove('open');
+});
+
+logoutConfirmModal?.addEventListener('click', (e) => {
+    if (e.target === logoutConfirmModal) {
+        logoutConfirmModal.classList.remove('open');
     }
 });
 
-modalLogoutBtn?.addEventListener('click', async () => {
+async function performLogout() {
     try {
-        await fetch('http://127.0.0.1:5000/api/auth/logout', { method: 'POST' });
+        logoutConfirmModal?.classList.remove('open');
         authModal?.classList.remove('open');
-        await checkFyersStatus();
+        await fetch('http://127.0.0.1:5000/api/auth/logout', { method: 'POST' });
     } catch (err) {
-        alert(`Logout error: ${err}`);
+        console.warn('[terminal] Logout API call error:', err);
+    }
+    currentFyersProvider?.clearCache();
+    wasAuthenticated = false;
+    statusDot.className = 'status-dot';
+    statusLabel.textContent = 'FYERS: Logged Out';
+    setLoginScreenVisible(true);
+    await checkFyersStatus();
+}
+
+confirmLogoutBtn?.addEventListener('click', () => {
+    void performLogout();
+});
+
+modalLogoutBtn?.addEventListener('click', () => {
+    logoutConfirmModal?.classList.add('open');
+});
+
+modalSaveCredsBtn?.addEventListener('click', () => {
+    if (modalAppIdInput && modalSecretKeyInput) {
+        void saveApiCredentials(modalAppIdInput.value, modalSecretKeyInput.value);
     }
 });
 
@@ -1057,11 +1091,17 @@ async function submitToken(tokenStr: string) {
     }
 }
 
-authBtn.addEventListener('click', () => {
-    authModal.classList.add('open');
+authBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    authModal?.classList.add('open');
 });
-closeModalBtn.addEventListener('click', () => {
-    authModal.classList.remove('open');
+closeModalBtn?.addEventListener('click', () => {
+    authModal?.classList.remove('open');
+});
+authModal?.addEventListener('click', (e) => {
+    if (e.target === authModal) {
+        authModal.classList.remove('open');
+    }
 });
 saveTokenBtn.addEventListener('click', () => {
     void submitToken(manualTokenInput.value);

@@ -151,6 +151,7 @@ export function createServerApp() {
   // Auth: logout
   app.post('/api/auth/logout', (_req, res) => {
     fyersService.logout();
+    tickAggregator.destroy();
     res.json({ success: true, message: 'Logged out successfully' });
   });
 
