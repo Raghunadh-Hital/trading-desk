@@ -91,6 +91,16 @@ export class FyersProvider implements DataProvider {
         this.wsUrl = config?.wsUrl ?? 'ws://127.0.0.1:5000/ws/ticks';
     }
 
+    /**
+     * Clears in-memory bar cache and inflight promises.
+     * Useful when switching authentication state to force fresh API history fetches.
+     */
+    clearCache(): void {
+        this.barCache.clear();
+        this.lastCloses.clear();
+        this.inflightRequests.clear();
+    }
+
     info(): ProviderInfo {
         const capabilities: ProviderCapabilities = {
             enumerate: true,

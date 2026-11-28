@@ -813,6 +813,47 @@ function setLoginScreenVisible(visible: boolean) {
 }
 
 let consecutiveOfflineCount = 0;
+let wasAuthenticated: boolean | null = null;
+let isReloadingOnAuth = false;
+
+/**
+ * Force-reloads all charts and re-syncs Pine Script indicators across the entire workspace.
+ * Called automatically when FYERS authentication succeeds (e.g. after completing onboarding or token input).
+ */
+async function reloadChartsAndIndicators(): Promise<void> {
+    if (isReloadingOnAuth) return;
+    isReloadingOnAuth = true;
+    console.log('[terminal] FYERS connected: Reloading market data & Pine Scripts across all chart cells...');
+    try {
+        currentFyersProvider?.clearCache();
+        const cells = ws.cells();
+        await Promise.all(
+            cells.map(async (cell) => {
+                try {
+                    await cell.chart.setMarket({ force: true });
+                } catch (err) {
+                    console.warn('[terminal] Failed reloading cell market:', err);
+                }
+            })
+        );
+        window.dispatchEvent(new Event('resize'));
+        await ws.chart.ready().catch(() => {});
+
+        setTimeout(async () => {
+            try {
+                await syncAllIndicatorsAcrossLayout();
+                focusCMP();
+            } catch (err) {
+                console.warn('[terminal] Failed syncing indicators after market reload:', err);
+            } finally {
+                isReloadingOnAuth = false;
+            }
+        }, 300);
+    } catch (err) {
+        console.warn('[terminal] reloadChartsAndIndicators error:', err);
+        isReloadingOnAuth = false;
+    }
+}
 
 async function checkFyersStatus() {
     try {
@@ -825,7 +866,16 @@ async function checkFyersStatus() {
                 statusLabel.textContent = 'FYERS: Authenticated';
                 if (screenWaitingNotice) screenWaitingNotice.style.display = 'none';
                 setLoginScreenVisible(false);
+
+                // If user just authenticated (transitioned from unauthenticated -> authenticated),
+                // immediately reload all charts & Pine Scripts with live data!
+                if (wasAuthenticated === false) {
+                    console.log('[terminal] First-time authentication detected! Refreshing terminal charts...');
+                    void reloadChartsAndIndicators();
+                }
+                wasAuthenticated = true;
             } else {
+                wasAuthenticated = false;
                 statusDot.className = 'status-dot';
                 if (!data.configured) {
                     statusLabel.textContent = 'FYERS: Credentials Not Configured';
@@ -999,8 +1049,8 @@ async function submitToken(tokenStr: string) {
         if (res.ok) {
             authModal?.classList.remove('open');
             await checkFyersStatus();
-            // Reload the chart market so fresh data immediately loads
-            void ws.chart.setMarket({ symbol: ws.chart.symbol, timeframe: ws.chart.timeframe });
+            // Force-reload all charts and Pine Scripts with fresh market data
+            void reloadChartsAndIndicators();
         }
     } catch (err) {
         alert(`Failed to save token: ${err}`);
