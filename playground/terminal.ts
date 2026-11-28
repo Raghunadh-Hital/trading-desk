@@ -695,17 +695,19 @@ const step1UserIp = document.getElementById('step1-user-ip');
 const step1CopyIpBtn = document.getElementById('step1-copy-ip-btn');
 const step1CopyRedirectBtn = document.getElementById('step1-copy-redirect-btn');
 
-// Step 2 Elements
+// Step 2 & Timeline Step 4 Elements
 const step2Card = document.getElementById('step2-card');
 const step2Tag = document.getElementById('step2-tag');
+const timelineStep4 = document.getElementById('timeline-step-4');
 const screenAppIdInput = document.getElementById('screen-app-id') as HTMLInputElement | null;
 const screenSecretKeyInput = document.getElementById('screen-secret-key') as HTMLInputElement | null;
 const screenSaveCredsBtn = document.getElementById('screen-save-creds-btn') as HTMLButtonElement | null;
 const step2Feedback = document.getElementById('step2-feedback');
 
-// Step 3 Elements
+// Step 3 & Timeline Step 5 Elements
 const step3Card = document.getElementById('step3-card');
 const step3Tag = document.getElementById('step3-tag');
+const timelineStep5 = document.getElementById('timeline-step-5');
 const screenLoginBtn = document.getElementById('screen-login-btn') as HTMLButtonElement | null;
 const screenWaitingNotice = document.getElementById('screen-waiting-notice');
 const reopenBrowserBtn = document.getElementById('reopen-browser-btn');
@@ -830,31 +832,36 @@ async function checkFyersStatus() {
                     if (screenStatusText) screenStatusText.textContent = 'Step 1 & 2: Configure FYERS API Credentials';
                     screenStatusBadge?.classList.remove('configured');
                     
-                    // Step 2 needs action
+                    // Step 4 needs action
                     step2Card?.classList.remove('completed');
+                    timelineStep4?.classList.remove('completed');
                     if (step2Tag) step2Tag.textContent = 'Action Required';
 
-                    // Step 3 locked
+                    // Step 5 locked
                     step3Card?.classList.add('locked');
                     step3Card?.classList.remove('active');
-                    if (step3Tag) step3Tag.textContent = 'Awaiting Step 2';
+                    timelineStep5?.classList.remove('active');
+                    timelineStep5?.classList.remove('completed');
+                    if (step3Tag) step3Tag.textContent = 'Awaiting Step 4';
                     if (screenLoginBtn) {
                         screenLoginBtn.setAttribute('disabled', 'true');
                         screenLoginBtn.classList.add('disabled');
                     }
                 } else {
                     statusLabel.textContent = 'FYERS: Login Required (Session Expired)';
-                    if (screenStatusText) screenStatusText.textContent = 'Step 3: Ready to Log in with FYERS';
+                    if (screenStatusText) screenStatusText.textContent = 'Step 5: Ready to Log in with FYERS';
                     screenStatusBadge?.classList.add('configured');
 
-                    // Step 1 & 2 completed
+                    // Step 1, 2, 3, 4 completed
                     if (step1Tag) step1Tag.textContent = 'Configured ✓';
                     step2Card?.classList.add('completed');
+                    timelineStep4?.classList.add('completed');
                     if (step2Tag) step2Tag.textContent = 'Saved ✓';
 
-                    // Step 3 unlocked and active
+                    // Step 5 unlocked and active
                     step3Card?.classList.remove('locked');
                     step3Card?.classList.add('active');
+                    timelineStep5?.classList.add('active');
                     if (step3Tag) step3Tag.textContent = 'Ready to Connect';
                     if (screenLoginBtn) {
                         screenLoginBtn.removeAttribute('disabled');
@@ -906,16 +913,18 @@ async function saveApiCredentials(appId: string, secretKey: string, feedbackEl?:
         if (res.ok) {
             if (feedbackEl) {
                 feedbackEl.className = 'step-feedback success';
-                feedbackEl.textContent = '✓ Credentials saved successfully! Step 3 is now unlocked.';
+                feedbackEl.textContent = '✓ Credentials saved successfully! Step 5 is now unlocked.';
                 feedbackEl.style.display = 'block';
             } else {
                 alert('FYERS API credentials saved successfully!');
             }
-            // Unlock Step 3 right away for instant responsiveness
+            // Unlock Step 5 right away for instant responsiveness
             step2Card?.classList.add('completed');
+            timelineStep4?.classList.add('completed');
             if (step2Tag) step2Tag.textContent = 'Saved ✓';
             step3Card?.classList.remove('locked');
             step3Card?.classList.add('active');
+            timelineStep5?.classList.add('active');
             if (step3Tag) step3Tag.textContent = 'Ready to Connect';
             if (screenLoginBtn) {
                 screenLoginBtn.removeAttribute('disabled');
