@@ -889,12 +889,19 @@ export class EngineOrchestrator implements IndicatorController, PaneController, 
             } else {
                 // Reload through the shared pipeline. The race lets a superseded caller resolve
                 // promptly (e.g. a parked load on an unresolvable symbol) instead of hanging.
-                await Promise.race([this.loadMarket(gen, { firstLoad: false }), new Promise<void>((resolve) => this.supersedeWaiters.push(resolve))]);
+                await Promise.race([
+                    this.loadMarket(gen, { firstLoad: false }),
+                    new Promise<void>((resolve) => this.supersedeWaiters.push(resolve)),
+                    new Promise<void>((resolve) => setTimeout(resolve, 8000)),
+                ]);
             }
             if (this.generation !== gen) return; // superseded — the newer switch owns the chart
         } finally {
             // A superseding call set its own flag — only the owning generation clears it.
-            if (this.generation === gen) this.switchingMarket = false;
+            if (this.generation === gen) {
+                this.switchingMarket = false;
+                if (this.loadingUp) this.endLoad();
+            }
         }
 
         // The carried view's REFINEMENT: the provisional time window framed the first
@@ -1744,9 +1751,13 @@ export class EngineOrchestrator implements IndicatorController, PaneController, 
             record.session = undefined;
             record.pendingStructural = true; // every value changed → full remount, not a patch
             record.pendingCause = 'market';
-            this.setLoading(record, true);
-            const handle = this.handles.get(record.id);
-            if (handle) this.executeIndicator(record.id, handle);
+            if (this.bars.length > 0) {
+                this.setLoading(record, true);
+                const handle = this.handles.get(record.id);
+                if (handle) this.executeIndicator(record.id, handle);
+            } else {
+                this.setLoading(record, false);
+            }
         }
     }
 

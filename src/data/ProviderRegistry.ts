@@ -177,6 +177,13 @@ export class ProviderRegistry {
                 const d = this.entries.get(name)!.prefixIndex?.get(key);
                 if (d) return { provider: name, ticker: this.loadableTicker(name, d) };
             }
+            // Fallback for Indian market exchange prefixes (NSE, BSE, MCX):
+            // If the provider prefix is an exchange prefix and 'fyers' is available, route to 'fyers'
+            for (const name of this.candidateOrder(opts.default)) {
+                if (name === 'fyers' && (provider === 'nse' || provider === 'bse' || provider === 'mcx')) {
+                    return { provider: name, ticker };
+                }
+            }
             return null;
         }
 
@@ -189,6 +196,12 @@ export class ProviderRegistry {
                 // group's default member. Anything else keeps the CALLER's spelling.
                 return { provider: name, ticker: d != null && isGroupRow(d) ? this.loadableTicker(name, d) : ticker };
             }
+        }
+
+        // If a default provider is registered or sole provider exists, route bare/unlisted ticker there:
+        const fallbackProvider = opts.default ? normName(opts.default) : (this.entries.size === 1 ? this.names()[0] : null);
+        if (fallbackProvider && this.entries.has(fallbackProvider) && fallbackProvider === 'fyers') {
+            return { provider: fallbackProvider, ticker };
         }
 
         // Lenient (primary load only): a SOLE registered provider that cannot be
@@ -221,6 +234,7 @@ export class ProviderRegistry {
         const immediate = this.resolve(raw, { ...opts, lenient: true });
         if (immediate) return Promise.resolve(immediate);
         return new Promise<Resolved>((resolve) => {
+            let timer: ReturnType<typeof setTimeout> | null = null;
             const off = this.onChange((settled) => {
                 const r = this.resolve(raw, { ...opts, lenient: true });
                 if (r) {
@@ -233,14 +247,29 @@ export class ProviderRegistry {
                     // false verdict — the user sees "no provider serves X" on a symbol that
                     // resolves a moment later.
                     this.reportUnresolved(raw);
+                    // Do not leave promise hanging indefinitely once all providers settled:
+                    const fallback = opts.default ? normName(opts.default) : (this.entries.size === 1 ? this.names()[0] : null);
+                    if (fallback && this.entries.has(fallback) && fallback === 'fyers') {
+                        stop();
+                        resolve({ provider: fallback, ticker: this.parse(raw).ticker });
+                    }
                 }
             });
             // A parked wait outlives its chart unless it is cancellable: every rebuild over an
             // unservable symbol would otherwise leave its listener behind for the page's life.
             const stop = (): void => {
+                if (timer) clearTimeout(timer);
                 off();
                 this.waits.delete(stop);
             };
+            // Fallback timeout guard (1500ms): if provider is fyers, don't permanently lock the chart in loading.
+            timer = setTimeout(() => {
+                const fallback = opts.default ? normName(opts.default) : (this.entries.size === 1 ? this.names()[0] : null);
+                if (fallback && this.entries.has(fallback) && fallback === 'fyers') {
+                    stop();
+                    resolve({ provider: fallback, ticker: this.parse(raw).ticker });
+                }
+            }, 1500);
             this.waits.add(stop);
         });
     }

@@ -2,15 +2,18 @@
 
 All notable changes to Vela, newest first.
 
-## [Unreleased]
+## [0.10.18]
 
 ### Added
 
 - **FYERS Indian Market Data Provider and dedicated charting terminal.** Vela now ships `@luxalgo/vela/providers/fyers` supporting Indian equities, indices, and derivatives (NSE, BSE, MCX) with standard Indian market sessions (09:15-15:30 IST), automatic timeframe aggregation, local caching proxy integration, and live WebSocket tick streaming. A dedicated playground terminal provides Pine Script v5/v6 editing and execution via Monaco Code Editor and the PineTS engine.
 - **Standalone Desktop Application and in-app market data configuration.** Vela now packages as an installable desktop application with an embedded background proxy, isolated OS-level credential storage, and direct in-app setup for broker API credentials and authentication tokens.
+- **Comprehensive Indian equity catalog support.** All NSE and BSE stock symbols, indices, ETFs, and SME series resolve automatically with zero delay.
+- **Over-the-air (OTA) desktop background updates.** The desktop application now verifies and downloads updates automatically via GitHub Releases without requiring manual re-installation.
 
 ### Fixed
 
+- **Symbol changes and multi-chart layout switches never stall in loading.** Resolved a promise hang in provider resolution for unindexed symbols, added exchange prefix routing for Indian markets (`NSE:`, `BSE:`, `MCX:`), and ensured canvas loading indicators and indicator badges cleanly dismiss even on slow networks or empty history.
 - **Indicator input fields preserve their declared script order and group layout.** Settings dialog sections now maintain the source sequence of ungrouped and grouped parameters instead of aggregating all ungrouped inputs at the top, and inputs stay on the Inputs tab in script order unless explicitly assigned to another tab.
 - **Live candlestick updates and price precision for Indian markets.** Forming candles now continuously update on real-time trade ticks and exchange quote changes across all intraday resolutions (including 30m, 2h, and 4h), and the price axis displays two decimal places matching the standard 0.05 tick size.
 

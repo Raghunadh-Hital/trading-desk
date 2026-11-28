@@ -164,7 +164,10 @@ export class FyersProvider implements DataProvider {
 
     async listSymbols(): Promise<SymbolDescriptor[]> {
         try {
-            const res = await fetch(`${this.proxyUrl}/api/symbols`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 4000);
+            const res = await fetch(`${this.proxyUrl}/api/symbols`, { signal: controller.signal });
+            clearTimeout(timeoutId);
             if (res.ok) {
                 const data = await res.json();
                 if (Array.isArray(data.symbols)) {
@@ -255,10 +258,14 @@ export class FyersProvider implements DataProvider {
             const url = `${this.proxyUrl}/api/history?symbol=${encodeURIComponent(symbol)}&resolution=${encodeURIComponent(resolution)}&range_from=${rangeFrom}&range_to=${rangeTo}`;
 
             try {
-                const res = await fetch(url);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 6000);
+                const res = await fetch(url, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
                 if (res.ok) {
                     const data = await res.json();
-                    if (data && Array.isArray(data.candles)) {
+                    if (data && Array.isArray(data.candles) && data.candles.length > 0) {
                         const bars: OHLCV[] = data.candles.map((c: any) => ({
                             time: Number(c.time),
                             open: Number(c.open),
@@ -271,23 +278,23 @@ export class FyersProvider implements DataProvider {
                         if (sorted.length > 0) {
                             const last = sorted[sorted.length - 1];
                             if (last) this.lastCloses.set(symbol, last.close);
+                            const prev = this.barCache.get(seriesKey);
+                            const merged = prev ? dedupeSorted([...prev.bars, ...sorted]) : sorted;
+                            this.barCache.set(seriesKey, {
+                                fetchedAt: Date.now(),
+                                fromSec: prev ? Math.min(prev.fromSec, rangeFrom) : rangeFrom,
+                                toSec: prev ? Math.max(prev.toSec, rangeTo) : rangeTo,
+                                bars: merged,
+                            });
+                            return sorted;
                         }
-                        const prev = this.barCache.get(seriesKey);
-                        const merged = prev ? dedupeSorted([...prev.bars, ...sorted]) : sorted;
-                        this.barCache.set(seriesKey, {
-                            fetchedAt: Date.now(),
-                            fromSec: prev ? Math.min(prev.fromSec, rangeFrom) : rangeFrom,
-                            toSec: prev ? Math.max(prev.toSec, rangeTo) : rangeTo,
-                            bars: merged,
-                        });
-                        return sorted;
                     }
                 }
             } catch (err) {
                 console.warn(`[FyersProvider] Fetch failed: ${err}. Using fallback synthesis.`);
             }
 
-            // Fallback synthetic candles if server proxy is unavailable
+            // Fallback synthetic candles if server proxy is unavailable or returned 0 candles
             const fallback = this.synthesizeBars(symbol, resolution, rangeFrom, rangeTo);
             if (fallback.length > 0) {
                 const last = fallback[fallback.length - 1];

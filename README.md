@@ -167,8 +167,8 @@ npm run electron:build
 ```
 
 The output binaries will be generated inside the `release/` folder:
-- `release/Trading Desk Setup 0.10.17.exe` (One-click NSIS installer with desktop shortcut)
-- `release/Trading Desk 0.10.17.exe` (Standalone portable executable)
+- `release/Trading Desk Setup 0.10.18.exe` (One-click NSIS installer with desktop shortcut)
+- `release/Trading Desk 0.10.18.exe` (Standalone portable executable)
 
 ---
 
