@@ -128,6 +128,13 @@
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Raghunadh-Hital",
+        "repo": "trading-desk"
+      }
+    ],
     "files": [
       "dist-desktop/**/*",
       "electron/**/*",
@@ -193,7 +200,8 @@
     "vitest": "^4.1.0"
   },
   "dependencies": {
-    "@luxalgo/vela-ui": "^0.4.4"
+    "@luxalgo/vela-ui": "^0.4.4",
+    "electron-updater": "^6.8.11"
   },
   "skills": [
     "npm:@luxalgo/vela-ui"

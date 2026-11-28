@@ -1,4 +1,5 @@
-const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, dialog } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('node:path');
 const fs = require('node:fs');
 const { spawn } = require('node:child_process');
@@ -169,10 +170,57 @@ function loadAppUrl() {
     });
 }
 
+// Configure auto-updater for OTA updates from GitHub Releases
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+autoUpdater.on('checking-for-update', () => {
+    console.log('[AutoUpdater] Checking for updates...');
+});
+
+autoUpdater.on('update-available', (info) => {
+    console.log(`[AutoUpdater] Update available: v${info.version}`);
+});
+
+autoUpdater.on('update-not-available', (info) => {
+    console.log(`[AutoUpdater] Current version is up to date (v${info?.version || 'latest'})`);
+});
+
+autoUpdater.on('error', (err) => {
+    console.error('[AutoUpdater] Auto-updater error:', err ? err.message : err);
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+    console.log(`[AutoUpdater] Update v${info.version} downloaded successfully`);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        dialog.showMessageBox(mainWindow, {
+            type: 'info',
+            title: 'Update Ready',
+            message: `Trading Desk v${info.version} is downloaded and ready to install.`,
+            detail: 'Restart now to complete the update, or continue trading and it will install automatically when you quit the app.',
+            buttons: ['Restart & Install', 'Later'],
+            defaultId: 0,
+            cancelId: 1,
+        }).then((result) => {
+            if (result.response === 0) {
+                autoUpdater.quitAndInstall();
+            }
+        });
+    }
+});
+
 app.whenReady().then(async () => {
     createWindow();
     await startBackendServer();
     loadAppUrl();
+
+    if (!isDev) {
+        setTimeout(() => {
+            autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+                console.error('[AutoUpdater] Initial check error:', err?.message || err);
+            });
+        }, 5000);
+    }
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
